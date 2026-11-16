@@ -31,11 +31,17 @@ type BuildResult struct {
 	ResourcesPath        string
 	ResourceFiles        int
 	StyleSheets          []StyleSheet
+	Scripts              []ScriptAsset
 	FrameworkClasses     []string
 	FrameworkFiles       map[string]string
 	SourceFiles          map[string]string
 	Mode                 string
 	SourceMapPath        string
+}
+
+type ScriptAsset struct {
+	URL    string
+	Remote bool
 }
 
 type sourceFile struct {
@@ -150,6 +156,10 @@ func BuildWithOutputOptions(appDir, outputDir, selectedToolkit string, normalize
 	if err != nil {
 		return BuildResult{}, fmt.Errorf("JavaScript entry: %w", err)
 	}
+	scripts, scriptWatchPaths, err := resolveScripts(root, config.JavaScript, toolkit)
+	if err != nil {
+		return BuildResult{}, err
+	}
 	entryOriginalData, err := os.ReadFile(entryPath)
 	if err != nil {
 		return BuildResult{}, fmt.Errorf("read JavaScript entry %s: %w", entryPath, err)
@@ -182,6 +192,7 @@ func BuildWithOutputOptions(appDir, outputDir, selectedToolkit string, normalize
 	watchPaths = append(watchPaths, frameworkPackages.watchPaths...)
 	watchPaths = append(watchPaths, resourceWatchPaths...)
 	watchPaths = append(watchPaths, styleWatchPaths...)
+	watchPaths = append(watchPaths, scriptWatchPaths...)
 	watchPaths = append(watchPaths, filepath.Join(root, "app.json"), filepath.Join(root, "workspace.json"), entryPath)
 	for _, sourcePath := range paths {
 		if sourcePath.framework {
@@ -241,6 +252,10 @@ func BuildWithOutputOptions(appDir, outputDir, selectedToolkit string, normalize
 	if err != nil {
 		return BuildResult{}, err
 	}
+	jsAssets, err := copyScripts(scripts, outputRoot, outputPath)
+	if err != nil {
+		return BuildResult{}, err
+	}
 	if err := writeFileAtomic(outputPath, bundle); err != nil {
 		return BuildResult{}, fmt.Errorf("write bundle %s: %w", outputPath, err)
 	}
@@ -267,6 +282,7 @@ func BuildWithOutputOptions(appDir, outputDir, selectedToolkit string, normalize
 		ResourcesPath:        filepath.Join(outputRoot, "resources"),
 		ResourceFiles:        resourceFiles,
 		StyleSheets:          copiedStylesheets,
+		Scripts:              jsAssets,
 		FrameworkClasses:     frameworkClasses,
 		FrameworkFiles:       frameworkFiles,
 		SourceFiles:          sourceFiles,

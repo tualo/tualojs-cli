@@ -104,6 +104,11 @@ func newHandler(appDir string, current *atomic.Pointer[previewState]) http.Handl
 		w.Header().Set("Cache-Control", "no-store")
 		http.ServeFile(w, r, current.Load().result.OutputPath)
 	})
+	mux.HandleFunc("/js/", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Cache-Control", "no-store")
+		jsRoot := filepath.Join(filepath.Dir(current.Load().result.OutputPath), "js")
+		http.StripPrefix("/js/", http.FileServer(http.Dir(jsRoot))).ServeHTTP(w, r)
+	})
 	mux.HandleFunc("/app.js.map", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Cache-Control", "no-store")
 		path := current.Load().result.SourceMapPath
@@ -262,6 +267,8 @@ func deduplicatePreviewStrings(values []string) []string {
 
 func previewHTML(state *previewState) string {
 	frameworkClasses, _ := json.Marshal(state.result.FrameworkClasses)
+	scriptURLs := previewScriptURLs(state.result)
+	scripts, _ := json.Marshal(scriptURLs)
 	var cssLinks strings.Builder
 	for _, stylesheet := range state.result.StyleSheets {
 		href := stylesheet.URL
@@ -283,10 +290,18 @@ func previewHTML(state *previewState) string {
   <script>
     (() => {
       const frameworkClasses = %s;
+      const scripts = %s;
       const startApp = () => {
-        const script = document.createElement('script');
-        script.src = '/app.js';
-        document.body.appendChild(script);
+        let index = 0;
+        const loadNext = () => {
+          if (index >= scripts.length) return;
+          const script = document.createElement('script');
+          script.src = scripts[index++];
+          script.onload = loadNext;
+          script.onerror = loadNext;
+          document.body.appendChild(script);
+        };
+        loadNext();
       };
       Ext.Loader.setConfig({ enabled: true });
       Ext.Loader.setPath('Ext', '/sdk/classes');
@@ -312,7 +327,27 @@ func previewHTML(state *previewState) string {
   </script>
 </body>
 </html>
-`, html.EscapeString(state.result.AppName), html.EscapeString(state.themeCSSName), cssLinks.String(), string(frameworkClasses), state.buildID)
+`, html.EscapeString(state.result.AppName), html.EscapeString(state.themeCSSName), cssLinks.String(), string(frameworkClasses), string(scripts), state.buildID)
+}
+
+func previewScriptURLs(result compiler.BuildResult) []string {
+	var urls []string
+	for _, script := range result.Scripts {
+		if script.Remote {
+			if strings.Contains(script.URL, "://") || strings.HasPrefix(script.URL, "//") {
+				urls = append(urls, script.URL)
+				continue
+			}
+			localPath := filepath.Join(result.AppDir, filepath.FromSlash(script.URL))
+			if _, err := os.Stat(localPath); err != nil {
+				continue
+			}
+			urls = append(urls, "/"+strings.TrimPrefix(filepath.ToSlash(script.URL), "/"))
+			continue
+		}
+		urls = append(urls, "/"+strings.TrimPrefix(filepath.ToSlash(script.URL), "/"))
+	}
+	return urls
 }
 
 func frameworkClassFromURL(requestPath string) (string, bool) {

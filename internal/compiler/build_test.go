@@ -375,6 +375,35 @@ func TestBuildCopiesConfiguredResources(t *testing.T) {
 	}
 }
 
+func TestBuildCopiesNonBundleJavaScriptAssetsInManifestOrder(t *testing.T) {
+	root := makeFixture(t, map[string]string{
+		"app.json":      `{"name":"Example","namespace":"Example","classpath":["app"],"js":[{"path":"vendor/pre.js"},{"path":"app.js","bundle":true},{"path":"https://cdn.example/after.js","remote":true}]}`,
+		"app.js":        `Ext.application({name: 'Example'});`,
+		"app/Empty.js":  "",
+		"vendor/pre.js": "window.preload = true;",
+	})
+	result, err := Build(root, "out")
+	if err != nil {
+		t.Fatal(err)
+	}
+	wantURLs := []string{"js/vendor/pre.js", "app.js", "https://cdn.example/after.js"}
+	if len(result.Scripts) != len(wantURLs) {
+		t.Fatalf("script assets = %#v, want %d entries", result.Scripts, len(wantURLs))
+	}
+	for i, want := range wantURLs {
+		if result.Scripts[i].URL != want {
+			t.Fatalf("script %d URL = %q, want %q", i, result.Scripts[i].URL, want)
+		}
+	}
+	if !result.Scripts[2].Remote {
+		t.Fatal("remote JavaScript entry lost its remote flag")
+	}
+	asset, err := os.ReadFile(filepath.Join(filepath.Dir(result.OutputPath), "js", "vendor", "pre.js"))
+	if err != nil || string(asset) != "window.preload = true;" {
+		t.Fatalf("copied JavaScript asset = %q, err = %v", asset, err)
+	}
+}
+
 func TestBuildWritesLineLevelSourceMap(t *testing.T) {
 	root := makeFixture(t, map[string]string{
 		"app.json": `{"name":"Example","namespace":"Example","classpath":["app"],"js":[{"path":"app.js","bundle":true}]}`,

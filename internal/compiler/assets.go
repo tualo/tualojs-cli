@@ -19,6 +19,12 @@ type resolvedStylesheet struct {
 	remote bool
 }
 
+type resolvedScript struct {
+	asset  ScriptAsset
+	source string
+	output string
+}
+
 type StyleSheet struct {
 	URL    string
 	Path   string
@@ -98,6 +104,81 @@ func copyStylesheets(stylesheets []resolvedStylesheet, outputRoot, bundlePath st
 		copied = append(copied, StyleSheet{URL: stylesheet.url, Path: absolute})
 	}
 	return copied, nil
+}
+
+func resolveScripts(appRoot string, entries []jsEntry, toolkit string) ([]resolvedScript, []string, error) {
+	var scripts []resolvedScript
+	var watchPaths []string
+	for _, entry := range entries {
+		if entry.Bundle {
+			scripts = append(scripts, resolvedScript{asset: ScriptAsset{URL: "app.js"}})
+			continue
+		}
+		if entry.Remote {
+			scripts = append(scripts, resolvedScript{asset: ScriptAsset{URL: entry.Path, Remote: true}})
+			continue
+		}
+		if strings.Contains(entry.Path, "${framework.dir}") || strings.Contains(entry.Path, "${build.") {
+			continue
+		}
+		paths, err := expandToolkitPaths([]string{entry.Path}, toolkit)
+		if err != nil {
+			return nil, nil, err
+		}
+		source, err := projectPath(appRoot, paths[0])
+		if err != nil {
+			return nil, nil, fmt.Errorf("JavaScript asset: %w", err)
+		}
+		info, err := os.Stat(source)
+		if err != nil {
+			return nil, nil, fmt.Errorf("JavaScript asset %q: %w", entry.Path, err)
+		}
+		if !info.Mode().IsRegular() {
+			return nil, nil, fmt.Errorf("JavaScript asset %s is not a regular file", source)
+		}
+		relative, err := filepath.Rel(appRoot, source)
+		if err != nil {
+			return nil, nil, err
+		}
+		url := filepath.ToSlash(filepath.Join("js", relative))
+		scripts = append(scripts, resolvedScript{
+			asset:  ScriptAsset{URL: url},
+			source: source,
+			output: url,
+		})
+		watchPaths = append(watchPaths, source)
+	}
+	return scripts, uniquePaths(watchPaths), nil
+}
+
+func copyScripts(scripts []resolvedScript, outputRoot, bundlePath string) ([]ScriptAsset, error) {
+	assets := make([]ScriptAsset, 0, len(scripts))
+	for _, script := range scripts {
+		if script.source == "" {
+			assets = append(assets, script.asset)
+			continue
+		}
+		destination := filepath.Join(outputRoot, filepath.FromSlash(script.output))
+		absolute, err := filepath.Abs(destination)
+		if err != nil {
+			return nil, err
+		}
+		if absolute == bundlePath {
+			return nil, fmt.Errorf("JavaScript asset would overwrite bundle %s", bundlePath)
+		}
+		data, err := os.ReadFile(script.source)
+		if err != nil {
+			return nil, fmt.Errorf("read JavaScript asset %s: %w", script.source, err)
+		}
+		if err := os.MkdirAll(filepath.Dir(absolute), 0o755); err != nil {
+			return nil, fmt.Errorf("create JavaScript asset directory: %w", err)
+		}
+		if err := writeFileAtomic(absolute, data); err != nil {
+			return nil, fmt.Errorf("write JavaScript asset %s: %w", absolute, err)
+		}
+		assets = append(assets, script.asset)
+	}
+	return assets, nil
 }
 
 func resolveResources(appRoot, appName, mode string, entries resourceList, toolkit string) ([]resolvedResource, []string, error) {

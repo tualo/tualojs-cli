@@ -18,7 +18,7 @@ import (
 func TestPreviewServesShellFrameworkThemeAndBundle(t *testing.T) {
 	root := t.TempDir()
 	files := map[string]string{
-		"app.json":                       `{"name":"PreviewApp","namespace":"PreviewApp","toolkit":"modern","theme":"theme-material","classpath":["app"],"resources":[{"path":"app-assets","output":"shared"}],"css":[{"path":"styles/app.css"}],"js":[{"path":"app.js","bundle":true}]}`,
+		"app.json":                       `{"name":"PreviewApp","namespace":"PreviewApp","toolkit":"modern","theme":"theme-material","classpath":["app"],"resources":[{"path":"app-assets","output":"shared"}],"css":[{"path":"styles/app.css"}],"js":[{"path":"vendor/pre.js"},{"path":"app.js","bundle":true},{"path":"https://cdn.example/after.js","remote":true}]}`,
 		"workspace.json":                 `{"frameworks":{"ext":{"path":"sdk","version":"8.0.0.43"}}}`,
 		"sdk/package.json":               `{"name":"ext","version":"8.0.0.43","compatVersion":"8.0.0"}`,
 		"sdk/packages/core/package.json": `{"version":"8.0.0.43","sencha":{"name":"core","classpath":"${package.dir}/src"}}`,
@@ -31,6 +31,7 @@ func TestPreviewServesShellFrameworkThemeAndBundle(t *testing.T) {
 		"app/Main.js":         `Ext.define('PreviewApp.Main', { extend: 'Ext.Panel', requires: ['Ext.scroll.Scroller'] });`,
 		"app-assets/logo.txt": "preview logo",
 		"styles/app.css":      "body { background: red; }",
+		"vendor/pre.js":       "window.preload = true;",
 	}
 	for name, content := range files {
 		path := filepath.Join(root, name)
@@ -70,6 +71,9 @@ func TestPreviewServesShellFrameworkThemeAndBundle(t *testing.T) {
 		{path: "/", content: "/app.js"},
 		{path: "/", content: "Ext.scroll.Scroller"},
 		{path: "/app.js", content: "PreviewApp.Main"},
+		{path: "/", content: "/js/vendor/pre.js"},
+		{path: "/", content: "https://cdn.example/after.js"},
+		{path: "/js/vendor/pre.js", content: "window.preload"},
 		{path: "/app.js", content: "sourceMappingURL=app.js.map"},
 		{path: "/app.js.map", content: `"version":3`},
 		{path: "/sources/app/Main.js", content: "PreviewApp.Main"},
