@@ -27,6 +27,7 @@ type classDeclaration struct {
 	override     string
 	aliases      []string
 	dependencies []string
+	uses         []string
 }
 
 func parseExtMetadata(source string) ([]classDeclaration, []string, []string, error) {
@@ -67,6 +68,7 @@ func parseExtMetadata(source string) ([]classDeclaration, []string, []string, er
 				override:     first(properties["override"]),
 				aliases:      metadataAliases(properties),
 				dependencies: metadataDependencies(properties),
+				uses:         properties["uses"],
 			})
 		case "application":
 			if i+4 >= len(tokens) || !is(tokens, i+3, "(") || !is(tokens, i+4, "{") {
@@ -77,6 +79,7 @@ func parseExtMetadata(source string) ([]classDeclaration, []string, []string, er
 				return nil, nil, nil, err
 			}
 			applicationDependencies = append(applicationDependencies, metadataDependencies(properties)...)
+			applicationDependencies = append(applicationDependencies, properties["uses"]...)
 		case "create":
 			if i+4 < len(tokens) && is(tokens, i+3, "(") {
 				if tokens[i+4].kind == stringToken {
@@ -214,7 +217,7 @@ func objectProperties(tokens []jsToken, open int) (map[string][]string, error) {
 			if value < close && tokens[value].kind == stringToken && isStaticString(tokens, value, close) {
 				properties[key] = append(properties[key], tokens[value].value)
 			}
-		case "requires", "alias", "xtype":
+		case "requires", "alias", "xtype", "uses":
 			properties[key] = append(properties[key], stringArray(tokens, value, close)...)
 		case "mixins":
 			properties[key] = append(properties[key], classReferenceValues(tokens, value, close)...)

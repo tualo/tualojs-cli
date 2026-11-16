@@ -23,6 +23,7 @@ type Config struct {
 	OutDir            string
 	Toolkit           string
 	NormalizeLetConst bool
+	Mode              string
 	Address           string
 	Interval          time.Duration
 }
@@ -46,8 +47,11 @@ func Run(ctx context.Context, config Config) error {
 	if config.OutDir == "" {
 		config.OutDir = "build-go"
 	}
+	if config.Mode == "" {
+		config.Mode = compiler.BuildModeDevelopment
+	}
 
-	result, err := compiler.BuildWithOptions(config.AppDir, config.OutDir, config.Toolkit, config.NormalizeLetConst)
+	result, err := compiler.BuildWithMode(config.AppDir, config.OutDir, config.Toolkit, config.NormalizeLetConst, config.Mode)
 	if err != nil {
 		return err
 	}
@@ -97,6 +101,15 @@ func newHandler(appDir string, current *atomic.Pointer[previewState]) http.Handl
 	mux.HandleFunc("/app.js", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Cache-Control", "no-store")
 		http.ServeFile(w, r, current.Load().result.OutputPath)
+	})
+	mux.HandleFunc("/resources/", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Cache-Control", "no-store")
+		root := current.Load().result.ResourcesPath
+		if info, err := os.Stat(root); err != nil || !info.IsDir() {
+			root = filepath.Join(appDir, "resources")
+		}
+		fileServer := http.FileServer(http.Dir(root))
+		http.StripPrefix("/resources/", fileServer).ServeHTTP(w, r)
 	})
 	mux.HandleFunc("/sdk/ext.js", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Cache-Control", "no-store")
@@ -254,7 +267,7 @@ func watch(ctx context.Context, config Config, current *atomic.Pointer[previewSt
 			if snapshotsEqual(snapshot, fileSnapshot(state.result.WatchPaths, filepath.Dir(state.result.OutputPath))) {
 				continue
 			}
-			result, err := compiler.BuildWithOptions(config.AppDir, config.OutDir, config.Toolkit, config.NormalizeLetConst)
+			result, err := compiler.BuildWithMode(config.AppDir, config.OutDir, config.Toolkit, config.NormalizeLetConst, config.Mode)
 			if err != nil {
 				log.Printf("rebuild failed: %v", err)
 				snapshot = fileSnapshot(state.result.WatchPaths, filepath.Dir(state.result.OutputPath))

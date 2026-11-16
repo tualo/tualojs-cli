@@ -21,6 +21,7 @@ type appConfig struct {
 	Classic    toolkitProfile          `json:"classic"`
 	Modern     toolkitProfile          `json:"modern"`
 	JavaScript []jsEntry               `json:"js"`
+	Resources  resourceList            `json:"resources"`
 }
 
 type buildProfile struct {
@@ -51,6 +52,44 @@ func (p *pathList) UnmarshalJSON(data []byte) error {
 type jsEntry struct {
 	Path   string `json:"path"`
 	Bundle bool   `json:"bundle"`
+}
+
+type resourceEntry struct {
+	Path   string `json:"path"`
+	Output string `json:"output"`
+	Remote bool   `json:"remote"`
+}
+
+type resourceList []resourceEntry
+
+func (r *resourceList) UnmarshalJSON(data []byte) error {
+	if bytes.Equal(bytes.TrimSpace(data), []byte("null")) {
+		*r = nil
+		return nil
+	}
+	var single string
+	if err := json.Unmarshal(data, &single); err == nil {
+		*r = []resourceEntry{{Path: single}}
+		return nil
+	}
+	var entries []json.RawMessage
+	if err := json.Unmarshal(data, &entries); err != nil {
+		return fmt.Errorf("expected resource path or resource array: %w", err)
+	}
+	resources := make([]resourceEntry, 0, len(entries))
+	for _, entry := range entries {
+		if err := json.Unmarshal(entry, &single); err == nil {
+			resources = append(resources, resourceEntry{Path: single})
+			continue
+		}
+		var resource resourceEntry
+		if err := json.Unmarshal(entry, &resource); err != nil {
+			return fmt.Errorf("parse resource entry: %w", err)
+		}
+		resources = append(resources, resource)
+	}
+	*r = resources
+	return nil
 }
 
 func loadAppConfig(appDir string) (appConfig, string, error) {

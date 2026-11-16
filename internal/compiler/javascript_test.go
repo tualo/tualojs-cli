@@ -149,6 +149,20 @@ Ext.define('Example.Other', {
 	}
 }
 
+func TestParseUsesAsDeferredDependency(t *testing.T) {
+	source := `Ext.define('Example.Main', { uses: ['Example.Optional'] });`
+	classes, _, _, err := parseExtMetadata(source)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got, want := classes[0].uses, []string{"Example.Optional"}; !reflect.DeepEqual(got, want) {
+		t.Fatalf("uses = %#v, want %#v", got, want)
+	}
+	if len(classes[0].dependencies) != 0 {
+		t.Fatalf("uses should not be an eager dependency: %#v", classes[0].dependencies)
+	}
+}
+
 func TestParseExtDefineFactoryFunction(t *testing.T) {
 	source := `
 Ext.define('Example.draw.AnimationParser', function () {

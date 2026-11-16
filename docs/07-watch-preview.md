@@ -6,6 +6,7 @@
 go run ./cmd/extjsc watch \
   -app testdata/fixtures/minimal-modern \
   -toolkit modern \
+  -mode development \
   -normalize-let-const \
   -addr 127.0.0.1:1841
 ```
@@ -15,7 +16,9 @@ Danach die im Terminal angezeigte lokale URL öffnen. Mit `Ctrl+C` wird der Serv
 ## Verhalten
 
 - Führt beim Start einen Go-Build aus.
+- Verwendet standardmäßig `development`; `-mode production` aktiviert die Production-Präprozessorregeln.
 - Liefert eine Preview-Seite, das zum Toolkit passende Ext-JS-Debug-Runtime-Script aus dem konfigurierten SDK, dessen Theme-CSS, das Go-Bundle und statische App-Dateien aus.
+- Liefert kopierte `app.json.resources` unter `/resources/` aus und beobachtet Änderungen in diesen Quellpfaden.
 - Wenn das SDK kein vorgebautes Theme-CSS enthält, verwendet die Preview vorhandenes Development-CSS von Sencha Cmd unter `build/development/<app>/resources`; fehlt auch diese Datei, startet sie ohne Theme-CSS.
 - Aktiviert `Ext.Loader`, setzt den SDK-Classpath und lädt die ermittelten Framework-Klassen vor dem App-Bundle; Framework-Quelldateien werden bei Bedarf über `/sdk/classes/...` ausgeliefert.
 - Prüft Projekt- und Quellpfade standardmäßig alle 500 ms auf Änderungen (`-interval` ändert das Intervall).

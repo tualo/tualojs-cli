@@ -18,7 +18,7 @@ import (
 func TestPreviewServesShellFrameworkThemeAndBundle(t *testing.T) {
 	root := t.TempDir()
 	files := map[string]string{
-		"app.json":                       `{"name":"PreviewApp","namespace":"PreviewApp","toolkit":"modern","theme":"theme-material","classpath":["app"],"js":[{"path":"app.js","bundle":true}]}`,
+		"app.json":                       `{"name":"PreviewApp","namespace":"PreviewApp","toolkit":"modern","theme":"theme-material","classpath":["app"],"resources":[{"path":"app-assets","output":"shared"}],"js":[{"path":"app.js","bundle":true}]}`,
 		"workspace.json":                 `{"frameworks":{"ext":{"path":"sdk","version":"8.0.0.43"}}}`,
 		"sdk/package.json":               `{"name":"ext","version":"8.0.0.43","compatVersion":"8.0.0"}`,
 		"sdk/packages/core/package.json": `{"version":"8.0.0.43","sencha":{"name":"core","classpath":"${package.dir}/src"}}`,
@@ -27,8 +27,9 @@ func TestPreviewServesShellFrameworkThemeAndBundle(t *testing.T) {
 		"sdk/modern/modern/src/scroll/Scroller.js":                         `Ext.define('Ext.scroll.Scroller', { mixins: ['Ext.mixin.Factoryable'] });`,
 		"sdk/build/ext-modern-all-debug.js":                                "window.Ext = window.Ext || {};",
 		"sdk/build/modern/theme-material/resources/theme-material-all.css": "body { color: black; }",
-		"app.js":      `Ext.application({name: 'PreviewApp', extend: 'PreviewApp.Main'});`,
-		"app/Main.js": `Ext.define('PreviewApp.Main', { extend: 'Ext.Panel', requires: ['Ext.scroll.Scroller'] });`,
+		"app.js":              `Ext.application({name: 'PreviewApp', extend: 'PreviewApp.Main'});`,
+		"app/Main.js":         `Ext.define('PreviewApp.Main', { extend: 'Ext.Panel', requires: ['Ext.scroll.Scroller'] });`,
+		"app-assets/logo.txt": "preview logo",
 	}
 	for name, content := range files {
 		path := filepath.Join(root, name)
@@ -68,6 +69,7 @@ func TestPreviewServesShellFrameworkThemeAndBundle(t *testing.T) {
 		{path: "/", content: "/app.js"},
 		{path: "/", content: "Ext.scroll.Scroller"},
 		{path: "/app.js", content: "PreviewApp.Main"},
+		{path: "/resources/shared/logo.txt", content: "preview logo"},
 		{path: "/sdk/ext.js", content: "window.Ext"},
 		{path: "/", content: "Ext.scroll.Scroller"},
 		{path: "/sdk/classes/mixin/Factoryable.js", content: "Ext.mixin.Factoryable"},

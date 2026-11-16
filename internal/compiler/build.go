@@ -10,6 +10,11 @@ import (
 	"strings"
 )
 
+const (
+	BuildModeDevelopment = "development"
+	BuildModeProduction  = "production"
+)
+
 type BuildResult struct {
 	AppName              string
 	AppDir               string
@@ -23,8 +28,11 @@ type BuildResult struct {
 	Theme                string
 	Packages             []string
 	WatchPaths           []string
+	ResourcesPath        string
+	ResourceFiles        int
 	FrameworkClasses     []string
 	FrameworkFiles       map[string]string
+	Mode                 string
 }
 
 type sourceFile struct {
@@ -47,14 +55,24 @@ type classCandidate struct {
 }
 
 func Build(appDir, outputDir string) (BuildResult, error) {
-	return BuildWithOptions(appDir, outputDir, "", false)
+	return BuildWithMode(appDir, outputDir, "", false, BuildModeDevelopment)
 }
 
 func BuildWithToolkit(appDir, outputDir, selectedToolkit string) (BuildResult, error) {
-	return BuildWithOptions(appDir, outputDir, selectedToolkit, false)
+	return BuildWithMode(appDir, outputDir, selectedToolkit, false, BuildModeDevelopment)
 }
 
 func BuildWithOptions(appDir, outputDir, selectedToolkit string, normalizeLetConst bool) (BuildResult, error) {
+	return BuildWithMode(appDir, outputDir, selectedToolkit, normalizeLetConst, BuildModeDevelopment)
+}
+
+func BuildWithMode(appDir, outputDir, selectedToolkit string, normalizeLetConst bool, mode string) (BuildResult, error) {
+	if mode == "" {
+		mode = BuildModeDevelopment
+	}
+	if mode != BuildModeDevelopment && mode != BuildModeProduction {
+		return BuildResult{}, fmt.Errorf("unsupported build mode %q (expected development or production)", mode)
+	}
 	config, root, err := loadAppConfig(appDir)
 	if err != nil {
 		return BuildResult{}, err
@@ -82,6 +100,10 @@ func BuildWithOptions(appDir, outputDir, selectedToolkit string, normalizeLetCon
 		return BuildResult{}, err
 	}
 	config.Overrides, err = expandToolkitPaths(config.Overrides, toolkit)
+	if err != nil {
+		return BuildResult{}, err
+	}
+	resources, resourceWatchPaths, err := resolveResources(root, config.Resources, toolkit)
 	if err != nil {
 		return BuildResult{}, err
 	}
@@ -115,6 +137,11 @@ func BuildWithOptions(appDir, outputDir, selectedToolkit string, normalizeLetCon
 	if err != nil {
 		return BuildResult{}, fmt.Errorf("read JavaScript entry %s: %w", entryPath, err)
 	}
+	entrySource, err := preprocessSencha(string(entryData), mode)
+	if err != nil {
+		return BuildResult{}, fmt.Errorf("preprocess JavaScript entry %s: %w", entryPath, err)
+	}
+	entryData = []byte(entrySource)
 	_, appDependencies, sourceDependencies, err := parseExtMetadata(string(entryData))
 	if err != nil {
 		return BuildResult{}, fmt.Errorf("parse JavaScript entry %s: %w", entryPath, err)
@@ -136,6 +163,7 @@ func BuildWithOptions(appDir, outputDir, selectedToolkit string, normalizeLetCon
 	}
 	watchPaths := append([]string{}, appPackages.watchPaths...)
 	watchPaths = append(watchPaths, frameworkPackages.watchPaths...)
+	watchPaths = append(watchPaths, resourceWatchPaths...)
 	watchPaths = append(watchPaths, filepath.Join(root, "app.json"), filepath.Join(root, "workspace.json"), entryPath)
 	for _, sourcePath := range paths {
 		if sourcePath.framework {
@@ -147,7 +175,7 @@ func BuildWithOptions(appDir, outputDir, selectedToolkit string, normalizeLetCon
 		}
 	}
 	watchPaths = uniquePaths(watchPaths)
-	sources, classes, overrides, aliases, frameworkFiles, err := loadClasses(paths)
+	sources, classes, overrides, aliases, frameworkFiles, err := loadClasses(paths, mode)
 	if err != nil {
 		return BuildResult{}, err
 	}
@@ -195,6 +223,10 @@ func BuildWithOptions(appDir, outputDir, selectedToolkit string, normalizeLetCon
 			return BuildResult{}, fmt.Errorf("output bundle would overwrite class source %s", source.path)
 		}
 	}
+	resourceFiles, err := copyResources(resources, outputRoot)
+	if err != nil {
+		return BuildResult{}, err
+	}
 	if err := writeFileAtomic(outputPath, []byte(bundle.String())); err != nil {
 		return BuildResult{}, fmt.Errorf("write bundle %s: %w", outputPath, err)
 	}
@@ -211,8 +243,11 @@ func BuildWithOptions(appDir, outputDir, selectedToolkit string, normalizeLetCon
 		Theme:                theme,
 		Packages:             appPackages.packages,
 		WatchPaths:           watchPaths,
+		ResourcesPath:        filepath.Join(outputRoot, "resources"),
+		ResourceFiles:        resourceFiles,
 		FrameworkClasses:     frameworkClasses,
 		FrameworkFiles:       frameworkFiles,
+		Mode:                 mode,
 	}, nil
 }
 
@@ -265,7 +300,7 @@ func bundleEntry(config appConfig) (string, error) {
 	return entries[0], nil
 }
 
-func loadClasses(paths []classSourcePath) ([]sourceFile, map[string]sourceFile, map[string][]overrideDeclaration, map[string][]string, map[string]string, error) {
+func loadClasses(paths []classSourcePath, mode string) ([]sourceFile, map[string]sourceFile, map[string][]overrideDeclaration, map[string][]string, map[string]string, error) {
 	var sources []sourceFile
 	for priority, sourcePath := range paths {
 		path, err := projectPath(sourcePath.base, sourcePath.path)
@@ -281,7 +316,7 @@ func loadClasses(paths []classSourcePath) ([]sourceFile, map[string]sourceFile, 
 		}
 		if !info.IsDir() {
 			if strings.EqualFold(filepath.Ext(path), ".js") {
-				if err := appendSource(sourcePath.base, path, sourcePath.prefix, priority, sourcePath.framework, &sources); err != nil {
+				if err := appendSource(sourcePath.base, path, sourcePath.prefix, priority, sourcePath.framework, mode, &sources); err != nil {
 					return nil, nil, nil, nil, nil, err
 				}
 			}
@@ -294,7 +329,7 @@ func loadClasses(paths []classSourcePath) ([]sourceFile, map[string]sourceFile, 
 			if entry.IsDir() || !strings.EqualFold(filepath.Ext(entry.Name()), ".js") {
 				return nil
 			}
-			return appendSource(sourcePath.base, filePath, sourcePath.prefix, priority, sourcePath.framework, &sources)
+			return appendSource(sourcePath.base, filePath, sourcePath.prefix, priority, sourcePath.framework, mode, &sources)
 		})
 		if err != nil {
 			return nil, nil, nil, nil, nil, fmt.Errorf("scan source path %q: %w", sourcePath.path, err)
@@ -429,11 +464,16 @@ func preferredCandidate(candidates []classCandidate) (string, bool) {
 	return preferred[0].source.path, true
 }
 
-func appendSource(root, path, prefix string, priority int, framework bool, sources *[]sourceFile) error {
+func appendSource(root, path, prefix string, priority int, framework bool, mode string, sources *[]sourceFile) error {
 	data, err := os.ReadFile(path)
 	if err != nil {
 		return fmt.Errorf("read source %s: %w", path, err)
 	}
+	processed, err := preprocessSencha(string(data), mode)
+	if err != nil {
+		return fmt.Errorf("preprocess source %s: %w", path, err)
+	}
+	data = []byte(processed)
 	declarations, _, sourceDependencies, err := parseExtMetadata(string(data))
 	if err != nil {
 		return fmt.Errorf("parse source %s: %w", path, err)
@@ -488,6 +528,7 @@ func orderSources(namespace string, appDependencies []string, classes map[string
 			return fmt.Errorf("class dependency cycle: %s -> %s", strings.Join(chain, " -> "), name)
 		}
 		state[name] = 1
+		var deferredUses []string
 		if exists {
 			if source.framework {
 				if !frameworkLoaded[name] {
@@ -496,6 +537,7 @@ func orderSources(namespace string, appDependencies []string, classes map[string
 				}
 			} else {
 				declaration := declarationFor(source, name)
+				deferredUses = append(deferredUses, declaration.uses...)
 				for _, dependency := range declaration.dependencies {
 					if dependency == name {
 						continue
@@ -529,8 +571,16 @@ func orderSources(namespace string, appDependencies []string, classes map[string
 				ordered = append(ordered, override.source)
 				addedFiles[override.source.path] = true
 			}
+			if !override.source.framework {
+				deferredUses = append(deferredUses, override.declaration.uses...)
+			}
 		}
 		state[name] = 2
+		for _, usedClass := range deferredUses {
+			if err := visit(usedClass, append(chain, name)); err != nil {
+				return err
+			}
+		}
 		return nil
 	}
 	for _, dependency := range appDependencies {
@@ -569,6 +619,7 @@ func declarationFor(source sourceFile, name string) classDeclaration {
 	for _, candidate := range source.class {
 		if candidate.name == name && candidate.override == "" {
 			combined.dependencies = append(combined.dependencies, candidate.dependencies...)
+			combined.uses = append(combined.uses, candidate.uses...)
 		}
 	}
 	return combined

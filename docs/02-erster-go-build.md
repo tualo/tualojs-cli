@@ -20,11 +20,13 @@ Das Ergebnis liegt unter `testdata/fixtures/minimal-modern/build-go/app.js`. Rel
 
 - Liest App-Name, Namespace, Classpath und JavaScript-Einträge aus `app.json`.
 - Liest `workspace.json`, validiert das Ext-JS-SDK gegen das feste Kompatibilitätsziel 8.0.0 und löst Paketnamen sowie `alternateName`-Aliase auf.
+- Unterstützt `-mode development|production`; Sencha-`//<debug>`-Blöcke werden im Development-Modus erhalten und im Production-Modus entfernt, bevor Klassenabhängigkeiten ausgewertet werden.
 - Folgt transitiven `app.json.requires`-/Package-`sencha.requires`-Abhängigkeiten und nimmt deren Classpath- und Override-Dateien in die Klassenauflösung auf.
 - Ersetzt `${toolkit.name}` in Classpath- und Override-Pfaden; universelle Apps wählen das Toolkit mit `-toolkit classic|modern`.
 - Verlangt genau einen JavaScript-Einstieg mit `bundle: true`.
+- Kopiert lokale `app.json.resources`-Dateien und -Verzeichnisse mit optionalen `output`-Zielen ins Build-Verzeichnis.
 - Sucht `.js`-Dateien in den Classpath-Verzeichnissen und erkennt `Ext.define`-Deklarationen sowohl mit Objekt- als auch mit Factory-Funktions-Konfiguration sowie `Ext.application`.
-- Ermittelt `extend`, `requires`, `mainView`, `mixins` und `xclass` aus statischen Konfigurationsobjekten sowie statische Klassennamen in `Ext.create`, `Ext.require` und `Ext.syncRequire`.
+- Ermittelt `extend`, `requires`, `mainView`, `mixins`, `uses` und `xclass` aus statischen Konfigurationsobjekten sowie statische Klassennamen in `Ext.create`, `Ext.require` und `Ext.syncRequire`.
 - Verknüpft Override-Klassen aus den in `app.json` angegebenen `overrides`-Pfaden mit ihrem Ziel; Overrides werden direkt nach einem tatsächlich geladenen Ziel ausgegeben.
 - Löst Klassen-Aliase aus `alias` und `xtype` anhand von `xtype`-Konfigurationen und `Ext.widget()`-Aufrufen auf.
 - Mit `-normalize-let-const` werden `let`-/`const`-Deklarationen im direkten Funktions-Scope zu `var` normalisiert, einschließlich eines gleichnamigen Funktionsparameters. Standardmäßig bleiben sie unverändert.
@@ -36,7 +38,7 @@ Das Ergebnis liegt unter `testdata/fixtures/minimal-modern/build-go/app.js`. Rel
 
 ## Grenzen dieses Schritts
 
-Der Metadatenscanner ist kein vollständiger ECMAScript-Parser. Er behandelt insbesondere keine dynamisch berechneten Anforderungen und keine beliebigen JavaScript-Ausdrücke. Die aktuelle ES-Transformation lässt `let` in Block-Scope und `for`-Köpfen unverändert, damit deren Semantik nicht durch blindes Ersetzen verloren geht. Das Bundle enthält referenzierte App- und Package-Klassen sowie den Einstieg; Framework-Runtime im Bundle, Package-Ressourcen, Assets, Sass, allgemeine ES-Transformationen, Minifizierung, Source Maps und Sencha-Microloader-Artefakte sind noch nicht implementiert. Das Ergebnis ist deshalb ein erster Compiler-Schnitt und noch kein vollständiger Ersatz für `sencha app build`.
+Der Metadatenscanner ist kein vollständiger ECMAScript-Parser. Er behandelt insbesondere keine dynamisch berechneten Anforderungen und keine beliebigen JavaScript-Ausdrücke. Die aktuelle ES-Transformation lässt `let` in Block-Scope und `for`-Köpfen unverändert, damit deren Semantik nicht durch blindes Ersetzen verloren geht. Das Bundle enthält referenzierte App- und Package-Klassen sowie den Einstieg; Framework-Runtime im Bundle, Package-Ressourcen, CSS/Sass-Kompilierung, allgemeine ES-Transformationen, Minifizierung, Source Maps und Sencha-Microloader-Artefakte sind noch nicht implementiert. Das Ergebnis ist deshalb ein erster Compiler-Schnitt und noch kein vollständiger Ersatz für `sencha app build`.
 
 ## Prüfungen
 

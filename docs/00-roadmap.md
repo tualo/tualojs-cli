@@ -26,7 +26,7 @@ Die Implementierung startet mit einem kleinen, durch Tests abgesicherten vertika
 8. **JavaScript-Parsing erweitern** (`docs/08-javascript-parser.md`): Lexer/Parser und eng begrenzte Sencha-kompatible Quelltransformationen ausbauen.
 9. **Abhängigkeitssemantik** (`docs/09-abhaengigkeiten.md`): dynamische Anforderungen und Framework-Klassen ergänzen.
 10. **Sencha-spezifische Transformationen** (`docs/10-transformationen.md`): Präprozessoren, Makros und Framework-Konventionen implementieren.
-11. **Assets und Build-Ausgabe** (`docs/11-assets-und-ausgabe.md`): statische Ressourcen kopieren und vollständige, wiederholbare Build-Strukturen erzeugen.
+11. **Assets und Build-Ausgabe** (`docs/11-assets-und-ausgabe.md`): `app.json.resources` deterministisch ins Build-Verzeichnis kopieren und über die Preview ausliefern.
 12. **Minifizierung und Source Maps** (`docs/12-minifizierung.md`): Verhalten des gewählten Cmd-Ziels anhand Referenz-Builds spezifizieren.
 13. **Kompatibilitätsausbau** (`docs/13-kompatibilitaet.md`): weitere App-, Workspace-, Paket-, Theme- und Produktions-Build-Fälle ergänzen.
 
@@ -44,6 +44,7 @@ Die Implementierung startet mit einem kleinen, durch Tests abgesicherten vertika
 - Erstes Referenzprojekt: `testdata/fixtures/minimal-modern/`; erster Modus: Development.
 - Reale Projekte liegen unter `testdata/ext-build/`; `default` verwendet aktuell Ext JS 8.0.0.43 und dient als erstes größeres Zielprojekt.
 - Compilerlogik und JavaScript-Metadatenscanner werden in Go implementiert; das Go-Modul hat bisher keine externen Abhängigkeiten.
+- Vorgemerkte spätere Erweiterungen stehen in [`docs/wishlist.md`](wishlist.md).
 - Unterstützte Zielbetriebssysteme und der vollständige Kompatibilitätsumfang müssen noch festgelegt werden.
 
 ## Definition eines abgeschlossenen Schritts

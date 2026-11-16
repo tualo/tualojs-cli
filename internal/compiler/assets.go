@@ -1,0 +1,158 @@
+package compiler
+
+import (
+	"fmt"
+	"io/fs"
+	"os"
+	"path/filepath"
+	"strings"
+)
+
+type resolvedResource struct {
+	source string
+	output string
+}
+
+func resolveResources(appRoot string, entries resourceList, toolkit string) ([]resolvedResource, []string, error) {
+	var resources []resolvedResource
+	var watchPaths []string
+	for _, entry := range entries {
+		if entry.Remote {
+			continue
+		}
+		if entry.Path == "" {
+			return nil, nil, fmt.Errorf("app.json contains a resource entry with an empty path")
+		}
+		paths, err := expandToolkitPaths([]string{entry.Path}, toolkit)
+		if err != nil {
+			return nil, nil, err
+		}
+		source, err := projectPath(appRoot, paths[0])
+		if err != nil {
+			return nil, nil, fmt.Errorf("resource source: %w", err)
+		}
+		info, err := os.Stat(source)
+		if err != nil {
+			return nil, nil, fmt.Errorf("resource source %q: %w", entry.Path, err)
+		}
+		output := entry.Output
+		if output != "" {
+			outputs, err := expandToolkitPaths([]string{output}, toolkit)
+			if err != nil {
+				return nil, nil, err
+			}
+			output = outputs[0]
+		} else if info.IsDir() && filepath.Base(filepath.Clean(entry.Path)) == "resources" {
+			output = "."
+		} else {
+			output = filepath.ToSlash(filepath.Clean(entry.Path))
+		}
+		if err := validateResourceOutput(output); err != nil {
+			return nil, nil, fmt.Errorf("resource output for %q: %w", entry.Path, err)
+		}
+		resources = append(resources, resolvedResource{source: source, output: output})
+		watchPaths = append(watchPaths, source)
+	}
+	return resources, uniquePaths(watchPaths), nil
+}
+
+func validateResourceOutput(output string) error {
+	if filepath.IsAbs(output) {
+		return fmt.Errorf("absolute output path is not allowed")
+	}
+	clean := filepath.Clean(filepath.FromSlash(output))
+	if clean == ".." || strings.HasPrefix(clean, ".."+string(filepath.Separator)) {
+		return fmt.Errorf("output path escapes resources directory")
+	}
+	return nil
+}
+
+func copyResources(resources []resolvedResource, outputRoot string) (int, error) {
+	resourceRoot := filepath.Join(outputRoot, "resources")
+	written := make(map[string]string)
+	count := 0
+	for _, resource := range resources {
+		info, err := os.Stat(resource.source)
+		if err != nil {
+			return count, fmt.Errorf("stat resource %s: %w", resource.source, err)
+		}
+		if info.IsDir() {
+			targetBase := filepath.Join(resourceRoot, filepath.FromSlash(resource.output))
+			if isPathWithin(targetBase, resource.source) {
+				return count, fmt.Errorf("resource output %s is inside its source directory %s", targetBase, resource.source)
+			}
+			err = filepath.WalkDir(resource.source, func(sourcePath string, entry fs.DirEntry, walkErr error) error {
+				if walkErr != nil {
+					return walkErr
+				}
+				if entry.Type()&os.ModeSymlink != 0 {
+					if entry.IsDir() {
+						return filepath.SkipDir
+					}
+					return nil
+				}
+				if entry.IsDir() {
+					return nil
+				}
+				relative, err := filepath.Rel(resource.source, sourcePath)
+				if err != nil {
+					return err
+				}
+				destination := filepath.Join(targetBase, relative)
+				if err := copyResourceFile(sourcePath, destination, written); err != nil {
+					return err
+				}
+				count++
+				return nil
+			})
+			if err != nil {
+				return count, fmt.Errorf("copy resource directory %s: %w", resource.source, err)
+			}
+			continue
+		}
+		destination := filepath.Join(resourceRoot, filepath.FromSlash(resource.output))
+		if resource.output == "." || filepath.Ext(resource.output) == "" {
+			destination = filepath.Join(destination, filepath.Base(resource.source))
+		}
+		if err := copyResourceFile(resource.source, destination, written); err != nil {
+			return count, err
+		}
+		count++
+	}
+	return count, nil
+}
+
+func copyResourceFile(source, destination string, written map[string]string) error {
+	destination, err := filepath.Abs(destination)
+	if err != nil {
+		return err
+	}
+	if previous, exists := written[destination]; exists && previous != source {
+		return fmt.Errorf("resource collision: %s and %s both map to %s", previous, source, destination)
+	}
+	data, err := os.ReadFile(source)
+	if err != nil {
+		return fmt.Errorf("read resource %s: %w", source, err)
+	}
+	if err := os.MkdirAll(filepath.Dir(destination), 0o755); err != nil {
+		return fmt.Errorf("create resource directory: %w", err)
+	}
+	if err := writeFileAtomic(destination, data); err != nil {
+		return fmt.Errorf("write resource %s: %w", destination, err)
+	}
+	written[destination] = source
+	return nil
+}
+
+func isPathWithin(path, parent string) bool {
+	path, err := filepath.Abs(path)
+	if err != nil {
+		return false
+	}
+	parent, err = filepath.Abs(parent)
+	if err != nil {
+		return false
+	}
+	relative, err := filepath.Rel(parent, path)
+	return err == nil && (relative == "." || relative != ".." && !strings.HasPrefix(relative, ".."+string(filepath.Separator)))
+}

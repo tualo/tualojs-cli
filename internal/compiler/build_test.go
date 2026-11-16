@@ -75,6 +75,42 @@ func TestBuildPreservesLexicalDeclarationsByDefault(t *testing.T) {
 	}
 }
 
+func TestBuildModePreprocessesDebugDependencies(t *testing.T) {
+	root := makeFixture(t, map[string]string{
+		"app.json": `{"name":"Example","namespace":"Example","classpath":["app"],"js":[{"path":"app.js","bundle":true}]}`,
+		"app.js": `Ext.application({name: 'Example'});
+//<debug>
+Ext.require('Example.DebugOnly');
+//</debug>
+`,
+		"app/DebugOnly.js": `Ext.define('Example.DebugOnly', { debugOnly: true });`,
+	})
+
+	development, err := BuildWithMode(root, "out-development", "", false, BuildModeDevelopment)
+	if err != nil {
+		t.Fatal(err)
+	}
+	developmentBundle, err := os.ReadFile(development.OutputPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(developmentBundle), "Example.DebugOnly") {
+		t.Fatal("development build should retain debug-only class reference")
+	}
+
+	production, err := BuildWithMode(root, "out-production", "", false, BuildModeProduction)
+	if err != nil {
+		t.Fatal(err)
+	}
+	productionBundle, err := os.ReadFile(production.OutputPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(productionBundle), "DebugOnly") {
+		t.Fatalf("production build should remove debug-only dependency: %s", productionBundle)
+	}
+}
+
 func TestBuildRejectsDependencyCycle(t *testing.T) {
 	root := makeFixture(t, map[string]string{
 		"app.json": `{"name":"Example","namespace":"Example","classpath":["app"],"js":[{"path":"app.js","bundle":true}]}`,
@@ -266,6 +302,67 @@ func TestBuildLoadsMixinBeforeConsumer(t *testing.T) {
 	consumer := strings.Index(content, "// Source: app/Controller.js")
 	if mixin < 0 || consumer < 0 || mixin >= consumer {
 		t.Fatalf("mixin should precede consumer, positions = %d, %d", mixin, consumer)
+	}
+}
+
+func TestBuildLoadsUsesAfterDeclaringClass(t *testing.T) {
+	root := makeFixture(t, map[string]string{
+		"app.json": `{"name":"Example","namespace":"Example","classpath":["app"],"js":[{"path":"app.js","bundle":true}]}`,
+		"app.js":   `Ext.application({name: 'Example', extend: 'Example.Application'});`,
+		"app/Application.js": `Ext.define('Example.Application', {
+    extend: 'Ext.app.Application',
+    mainView: 'Example.Main'
+});`,
+		"app/Main.js": `Ext.define('Example.Main', {
+    extend: 'Ext.Panel',
+    uses: ['Example.Optional']
+});`,
+		"app/Optional.js": `Ext.define('Example.Optional', {
+    requires: ['Example.Main']
+});`,
+	})
+	result, err := Build(root, "out")
+	if err != nil {
+		t.Fatal(err)
+	}
+	bundle, err := os.ReadFile(result.OutputPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	content := string(bundle)
+	main := strings.Index(content, "// Source: app/Main.js")
+	optional := strings.Index(content, "// Source: app/Optional.js")
+	if main < 0 || optional < 0 || main >= optional {
+		t.Fatalf("uses class should follow its declaring class, positions = %d, %d", main, optional)
+	}
+}
+
+func TestBuildCopiesConfiguredResources(t *testing.T) {
+	root := makeFixture(t, map[string]string{
+		"app.json":             `{"name":"Example","namespace":"Example","classpath":["app"],"resources":[{"path":"resources","output":"shared"},{"path":"assets/logo.txt","output":"images/logo.txt"}],"js":[{"path":"app.js","bundle":true}]}`,
+		"app.js":               `Ext.application({name: 'Example'});`,
+		"app/Empty.js":         "",
+		"resources/readme.txt": "shared resource",
+		"assets/logo.txt":      "logo asset",
+	})
+	result, err := Build(root, "out")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.ResourceFiles != 2 {
+		t.Fatalf("copied resource files = %d, want 2", result.ResourceFiles)
+	}
+	for relative, expected := range map[string]string{
+		"shared/readme.txt": "shared resource",
+		"images/logo.txt":   "logo asset",
+	} {
+		content, err := os.ReadFile(filepath.Join(result.ResourcesPath, relative))
+		if err != nil {
+			t.Fatalf("read copied resource %s: %v", relative, err)
+		}
+		if string(content) != expected {
+			t.Errorf("resource %s = %q, want %q", relative, content, expected)
+		}
 	}
 }
 
