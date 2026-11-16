@@ -21,6 +21,7 @@ type classSourcePath struct {
 type packageResolution struct {
 	classpaths []classSourcePath
 	overrides  []classSourcePath
+	resources  []resolvedResource
 	version    string
 	sdkRoot    string
 	packages   []string
@@ -45,11 +46,12 @@ type sdkManifest struct {
 type packageManifest struct {
 	Version string `json:"version"`
 	Sencha  struct {
-		Name          string   `json:"name"`
-		AlternateName pathList `json:"alternateName"`
-		Requires      pathList `json:"requires"`
-		Classpath     pathList `json:"classpath"`
-		Overrides     pathList `json:"overrides"`
+		Name          string       `json:"name"`
+		AlternateName pathList     `json:"alternateName"`
+		Requires      pathList     `json:"requires"`
+		Classpath     pathList     `json:"classpath"`
+		Overrides     pathList     `json:"overrides"`
+		Resources     resourceList `json:"resources"`
 	} `json:"sencha"`
 }
 
@@ -165,8 +167,63 @@ func resolveAppPackages(appRoot string, required []string, toolkit string) (pack
 		}
 		resolution.classpaths = append(resolution.classpaths, classpath...)
 		resolution.overrides = append(resolution.overrides, overrides...)
+		resources, resourcePaths, err := expandPackageResources(pkg, pkg.manifest.Sencha.Resources, toolkit)
+		if err != nil {
+			return packageResolution{}, err
+		}
+		resolution.resources = append(resolution.resources, resources...)
+		resolution.watchPaths = append(resolution.watchPaths, resourcePaths...)
 	}
 	return resolution, nil
+}
+
+func expandPackageResources(pkg *sdkPackage, entries resourceList, toolkit string) ([]resolvedResource, []string, error) {
+	var resources []resolvedResource
+	var watchPaths []string
+	for _, entry := range entries {
+		if entry.Remote {
+			continue
+		}
+		path := strings.ReplaceAll(entry.Path, "${package.dir}", pkg.root)
+		path = strings.ReplaceAll(path, "${package.name}", pkg.manifest.Sencha.Name)
+		if strings.Contains(path, "${toolkit.name}") {
+			if toolkit == "" {
+				return nil, nil, fmt.Errorf("package %q resource path %q requires a toolkit", pkg.manifest.Sencha.Name, entry.Path)
+			}
+			path = strings.ReplaceAll(path, "${toolkit.name}", toolkit)
+		}
+		if !filepath.IsAbs(path) {
+			path = filepath.Join(pkg.root, path)
+		}
+		path, err := filepath.Abs(path)
+		if err != nil {
+			return nil, nil, fmt.Errorf("resolve package resource path: %w", err)
+		}
+		relative, err := filepath.Rel(pkg.root, path)
+		if err != nil || relative == ".." || strings.HasPrefix(relative, ".."+string(filepath.Separator)) {
+			return nil, nil, fmt.Errorf("package %q resource path escapes package directory", pkg.manifest.Sencha.Name)
+		}
+		if _, err := os.Stat(path); err != nil {
+			if strings.Contains(entry.Path, "${toolkit.name}") && os.IsNotExist(err) {
+				continue
+			}
+			return nil, nil, fmt.Errorf("package %q resource %s: %w", pkg.manifest.Sencha.Name, path, err)
+		}
+		output := entry.Output
+		output = strings.ReplaceAll(output, "${package.name}", pkg.manifest.Sencha.Name)
+		if strings.Contains(output, "${toolkit.name}") {
+			output = strings.ReplaceAll(output, "${toolkit.name}", toolkit)
+		}
+		if output == "" {
+			output = "shared"
+		}
+		if err := validateResourceOutput(output); err != nil {
+			return nil, nil, fmt.Errorf("package %q resource output: %w", pkg.manifest.Sencha.Name, err)
+		}
+		resources = append(resources, resolvedResource{source: path, output: output})
+		watchPaths = append(watchPaths, path)
+	}
+	return resources, uniquePaths(watchPaths), nil
 }
 
 func indexSDKPackages(sdkRoot, toolkit string) (map[string]*sdkPackage, error) {

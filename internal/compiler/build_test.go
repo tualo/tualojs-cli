@@ -553,13 +553,14 @@ func TestBuildLoadsTransitiveSDKPackageClasspaths(t *testing.T) {
 		"sdk/packages/core/package.json":        `{"version":"8.0.0.43","sencha":{"name":"core","classpath":"${package.dir}/src"}}`,
 		"sdk/modern/modern/package.json":        `{"version":"8.0.0.43","sencha":{"name":"modern","requires":["core"],"classpath":"${package.dir}/src"}}`,
 		"sdk/packages/base-lib/package.json":    `{"version":"1.0.0","sencha":{"name":"base-lib","classpath":"${package.dir}/src"}}`,
-		"sdk/packages/widget-lib/package.json":  `{"version":"1.0.0","sencha":{"name":"widget-lib","alternateName":["widget-alias"],"requires":["base-lib"],"classpath":["${package.dir}/src","${package.dir}/${toolkit.name}/src"]}}`,
+		"sdk/packages/widget-lib/package.json":  `{"version":"1.0.0","sencha":{"name":"widget-lib","alternateName":["widget-alias"],"requires":["base-lib"],"classpath":["${package.dir}/src","${package.dir}/${toolkit.name}/src"],"resources":[{"path":"${package.dir}/resources","output":"shared"}]}}`,
 		"sdk/packages/base-lib/src/Base.js":     `Ext.define('Lib.Base', { extend: 'Ext.Base' });`,
 		"sdk/packages/widget-lib/src/Widget.js": `Ext.define('Lib.Widget', { extend: 'Lib.Base' });`,
 		"sdk/packages/widget-lib/src/draw/AnimationParser.js": `Ext.define('Ext.draw.sprite.AnimationParser', function () {
     return { singleton: true, requires: ['Ext.draw.Color'] };
 });`,
 		"sdk/packages/widget-lib/modern/src/Toolkit.js": `Ext.define('Lib.Toolkit', { extend: 'Lib.Base' });`,
+		"sdk/packages/widget-lib/resources/icon.txt":    "package resource",
 		"app.js": `Ext.application({name: 'Example', extend: 'Example.Application'}); Ext.require('Ext.*');`,
 		"app/Application.js": `Ext.define('Example.Application', {
     extend: 'Ext.app.Application',
@@ -583,6 +584,13 @@ func TestBuildLoadsTransitiveSDKPackageClasspaths(t *testing.T) {
 	}
 	if got, want := result.Packages, []string{"base-lib", "widget-lib"}; !reflect.DeepEqual(got, want) {
 		t.Fatalf("resolved packages = %#v, want %#v", got, want)
+	}
+	if result.ResourceFiles != 1 {
+		t.Fatalf("copied package resources = %d, want 1", result.ResourceFiles)
+	}
+	resource, err := os.ReadFile(filepath.Join(result.ResourcesPath, "shared", "icon.txt"))
+	if err != nil || string(resource) != "package resource" {
+		t.Fatalf("package resource = %q, err = %v", resource, err)
 	}
 	bundle, err := os.ReadFile(result.OutputPath)
 	if err != nil {

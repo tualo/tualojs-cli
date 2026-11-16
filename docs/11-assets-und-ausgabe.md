@@ -8,13 +8,16 @@ Build-Pfade bleiben auf das App-Verzeichnis beschränkt, Output-Pfade auf den Re
 
 Der Sencha-Platzhalter `${build.id}` wird in Ressourcenpfaden anhand vorhandener `build/<mode>/<app-name>`-Verzeichnisse aufgelöst. Für Development-Builds wird zunächst das Development-Verzeichnis, danach ein vorhandener Production-Build verwendet; fehlt das referenzierte Verzeichnis, wird dieser Resource-Eintrag übersprungen.
 
+Transitive SDK-Packages können zusätzlich `sencha.resources` deklarieren. Diese Quellen werden nach ihrer Package-Auflösung in dasselbe `resources`-Ausgabeziel kopiert; ein fehlendes toolkit-spezifisches Resource-Verzeichnis wird übersprungen.
+
 ## Prüfungen
 
 - Integrationstest für Verzeichnis- und Einzeldatei-Ressourcen sowie `output`-Ziele.
 - Integrationstest für `${build.id}/resources` aus einem vorherigen Sencha-Build.
 - Preview-HTTP-Test für den Abruf einer kopierten Resource.
+- Fake-SDK-Integrationstest für ein transitive Package-Resource-Verzeichnis.
 - `testdata/sample` wird aus seinem Sencha-`resources`-Ordner nach `build-go/resources/shared` kopiert.
 
 ## Grenzen
 
-Package-Ressourcen, CSS/Sass-Transformationen, Inlining, Cache-Busting und AppCache-Manifeste sind noch nicht implementiert.
+CSS/Sass-Transformationen, Inlining, Cache-Busting und AppCache-Manifeste sind noch nicht implementiert.

@@ -122,6 +122,7 @@ func BuildWithOutputOptions(appDir, outputDir, selectedToolkit string, normalize
 	if err != nil {
 		return BuildResult{}, err
 	}
+	resources = append(resources, appPackages.resources...)
 	var frameworkPackages packageResolution
 	if appPackages.sdkRoot != "" {
 		if toolkit == "" {
