@@ -142,15 +142,16 @@ func TestPreviewFallsBackToSenchaGeneratedThemeCSS(t *testing.T) {
 func TestWatcherRebuildsAfterSourceChanges(t *testing.T) {
 	root := t.TempDir()
 	files := map[string]string{
-		"app.json":                          `{"name":"PreviewApp","namespace":"PreviewApp","toolkit":"modern","theme":"theme-material","classpath":["app"],"js":[{"path":"app.js","bundle":true}]}`,
+		"app.json":                          `{"name":"PreviewApp","namespace":"PreviewApp","toolkit":"modern","theme":"theme-material","classpath":["app"],"resources":[{"path":"assets","output":"shared"}],"js":[{"path":"app.js","bundle":true}]}`,
 		"workspace.json":                    `{"frameworks":{"ext":{"path":"sdk","version":"8.0.0.43"}}}`,
 		"sdk/package.json":                  `{"name":"ext","version":"8.0.0.43","compatVersion":"8.0.0"}`,
 		"sdk/packages/core/package.json":    `{"version":"8.0.0.43","sencha":{"name":"core","classpath":"${package.dir}/src"}}`,
 		"sdk/modern/modern/package.json":    `{"version":"8.0.0.43","sencha":{"name":"modern","requires":["core"],"classpath":"${package.dir}/src"}}`,
 		"sdk/build/ext-modern-all-debug.js": "window.Ext = window.Ext || {};",
 		"sdk/build/modern/theme-material/resources/theme-material-all.css": "body {}",
-		"app.js":      `Ext.application({name: 'PreviewApp', extend: 'PreviewApp.Main'});`,
-		"app/Main.js": `Ext.define('PreviewApp.Main', { extend: 'Ext.Panel', title: 'before' });`,
+		"app.js":          `Ext.application({name: 'PreviewApp', extend: 'PreviewApp.Main'});`,
+		"app/Main.js":     `Ext.define('PreviewApp.Main', { extend: 'Ext.Panel', title: 'before' });`,
+		"assets/logo.txt": "before",
 	}
 	for name, content := range files {
 		path := filepath.Join(root, name)
@@ -184,15 +185,34 @@ func TestWatcherRebuildsAfterSourceChanges(t *testing.T) {
 		t.Fatal(err)
 	}
 	deadline := time.Now().Add(2 * time.Second)
+	built := false
 	for time.Now().Before(deadline) {
 		updated, err := os.ReadFile(result.OutputPath)
 		if err == nil && strings.Contains(string(updated), "title: 'after'") {
+			built = true
+			break
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+	if !built {
+		updated, _ := os.ReadFile(result.OutputPath)
+		t.Fatalf("watcher did not rebuild bundle; before=%q after=%q", initial, updated)
+	}
+	assetPath := filepath.Join(root, "assets", "logo.txt")
+	if err := os.WriteFile(assetPath, []byte("after"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	deadline = time.Now().Add(2 * time.Second)
+	for time.Now().Before(deadline) {
+		updated, err := os.ReadFile(filepath.Join(result.ResourcesPath, "shared", "logo.txt"))
+		if err == nil && string(updated) == "after" {
 			cancel()
 			<-done
 			return
 		}
 		time.Sleep(20 * time.Millisecond)
 	}
-	updated, _ := os.ReadFile(result.OutputPath)
-	t.Fatalf("watcher did not rebuild bundle; before=%q after=%q", initial, updated)
+	cancel()
+	<-done
+	t.Fatal("watcher did not recopy changed static resource")
 }

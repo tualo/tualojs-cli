@@ -366,6 +366,18 @@ func TestBuildCopiesConfiguredResources(t *testing.T) {
 	}
 }
 
+func TestBuildRejectsResourceOutputOutsideBuildResources(t *testing.T) {
+	root := makeFixture(t, map[string]string{
+		"app.json":           `{"name":"Example","namespace":"Example","classpath":["app"],"resources":[{"path":"resources","output":"../outside"}],"js":[{"path":"app.js","bundle":true}]}`,
+		"app.js":             `Ext.application({name: 'Example'});`,
+		"app/Empty.js":       "",
+		"resources/file.txt": "file",
+	})
+	if _, err := Build(root, "out"); err == nil || !strings.Contains(err.Error(), "escapes resources directory") {
+		t.Fatalf("Build error = %v, want resource output traversal error", err)
+	}
+}
+
 func TestBuildExpandsToolkitClasspath(t *testing.T) {
 	root := makeFixture(t, map[string]string{
 		"app.json":           `{"name":"Example","namespace":"Example","classpath":["app","${toolkit.name}/src","both"],"js":[{"path":"app.js","bundle":true}]}`,
