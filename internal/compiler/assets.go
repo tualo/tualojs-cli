@@ -13,6 +13,93 @@ type resolvedResource struct {
 	output string
 }
 
+type resolvedStylesheet struct {
+	source string
+	url    string
+	remote bool
+}
+
+type StyleSheet struct {
+	URL    string
+	Path   string
+	Remote bool
+}
+
+func resolveStylesheets(appRoot string, config appConfig, toolkit, mode string) ([]resolvedStylesheet, []string, error) {
+	entries := append(resourceList{}, config.CSS...)
+	if toolkit == "classic" {
+		entries = append(entries, config.Classic.CSS...)
+	} else if toolkit == "modern" {
+		entries = append(entries, config.Modern.CSS...)
+	}
+	var stylesheets []resolvedStylesheet
+	var watchPaths []string
+	for _, entry := range entries {
+		if entry.Path == "" {
+			continue
+		}
+		path := strings.ReplaceAll(entry.Path, "${build.id}", resolveBuildID(appRoot, config.Name, mode))
+		paths, err := expandToolkitPaths([]string{path}, toolkit)
+		if err != nil {
+			return nil, nil, err
+		}
+		path = paths[0]
+		if strings.Contains(path, "${") {
+			continue
+		}
+		if entry.Remote {
+			stylesheets = append(stylesheets, resolvedStylesheet{url: path, remote: true})
+			continue
+		}
+		source, err := projectPath(appRoot, path)
+		if err != nil {
+			return nil, nil, fmt.Errorf("stylesheet source: %w", err)
+		}
+		info, err := os.Stat(source)
+		if err != nil {
+			if strings.Contains(entry.Path, "${build.id}") && os.IsNotExist(err) {
+				continue
+			}
+			return nil, nil, fmt.Errorf("stylesheet source %q: %w", entry.Path, err)
+		}
+		if !info.Mode().IsRegular() {
+			return nil, nil, fmt.Errorf("stylesheet source %s is not a regular file", source)
+		}
+		relative, err := filepath.Rel(appRoot, source)
+		if err != nil {
+			return nil, nil, err
+		}
+		url := filepath.ToSlash(relative)
+		stylesheets = append(stylesheets, resolvedStylesheet{source: source, url: url})
+		watchPaths = append(watchPaths, source)
+	}
+	return stylesheets, uniquePaths(watchPaths), nil
+}
+
+func copyStylesheets(stylesheets []resolvedStylesheet, outputRoot, bundlePath string) ([]StyleSheet, error) {
+	var copied []StyleSheet
+	written := make(map[string]string)
+	for _, stylesheet := range stylesheets {
+		if stylesheet.remote {
+			copied = append(copied, StyleSheet{URL: stylesheet.url, Remote: true})
+			continue
+		}
+		destination := filepath.Join(outputRoot, filepath.FromSlash(stylesheet.url))
+		absolute, err := filepath.Abs(destination)
+		if err != nil {
+			return nil, err
+		}
+		if absolute == bundlePath {
+			return nil, fmt.Errorf("stylesheet output would overwrite JavaScript bundle %s", bundlePath)
+		}
+		if err := copyResourceFile(stylesheet.source, absolute, written); err != nil {
+			return nil, fmt.Errorf("copy stylesheet: %w", err)
+		}
+		copied = append(copied, StyleSheet{URL: stylesheet.url, Path: absolute})
+	}
+	return copied, nil
+}
+
 func resolveResources(appRoot, appName, mode string, entries resourceList, toolkit string) ([]resolvedResource, []string, error) {
 	var resources []resolvedResource
 	var watchPaths []string

@@ -340,11 +340,12 @@ func TestBuildLoadsUsesAfterDeclaringClass(t *testing.T) {
 
 func TestBuildCopiesConfiguredResources(t *testing.T) {
 	root := makeFixture(t, map[string]string{
-		"app.json":             `{"name":"Example","namespace":"Example","classpath":["app"],"resources":[{"path":"resources","output":"shared"},{"path":"assets/logo.txt","output":"images/logo.txt"}],"js":[{"path":"app.js","bundle":true}]}`,
+		"app.json":             `{"name":"Example","namespace":"Example","classpath":["app"],"resources":[{"path":"resources","output":"shared"},{"path":"assets/logo.txt","output":"images/logo.txt"}],"css":[{"path":"styles/app.css"}],"js":[{"path":"app.js","bundle":true}]}`,
 		"app.js":               `Ext.application({name: 'Example'});`,
 		"app/Empty.js":         "",
 		"resources/readme.txt": "shared resource",
 		"assets/logo.txt":      "logo asset",
+		"styles/app.css":       "body { color: red; }",
 	})
 	result, err := Build(root, "out")
 	if err != nil {
@@ -352,6 +353,13 @@ func TestBuildCopiesConfiguredResources(t *testing.T) {
 	}
 	if result.ResourceFiles != 2 {
 		t.Fatalf("copied resource files = %d, want 2", result.ResourceFiles)
+	}
+	if len(result.StyleSheets) != 1 || result.StyleSheets[0].URL != "styles/app.css" {
+		t.Fatalf("stylesheet outputs = %#v, want styles/app.css", result.StyleSheets)
+	}
+	stylesheet, err := os.ReadFile(result.StyleSheets[0].Path)
+	if err != nil || string(stylesheet) != "body { color: red; }" {
+		t.Fatalf("copied stylesheet = %q, err = %v", stylesheet, err)
 	}
 	for relative, expected := range map[string]string{
 		"shared/readme.txt": "shared resource",

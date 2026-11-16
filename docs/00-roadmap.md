@@ -26,7 +26,7 @@ Die Implementierung startet mit einem kleinen, durch Tests abgesicherten vertika
 8. **JavaScript-Parsing erweitern** (`docs/08-javascript-parser.md`): Lexer/Parser und eng begrenzte Sencha-kompatible Quelltransformationen ausbauen.
 9. **Abhängigkeitssemantik** (`docs/09-abhaengigkeiten.md`): dynamische Anforderungen und Framework-Klassen ergänzen.
 10. **Sencha-spezifische Transformationen** (`docs/10-transformationen.md`): Präprozessoren, Makros und Framework-Konventionen implementieren.
-11. **Assets und Build-Ausgabe** (`docs/11-assets-und-ausgabe.md`): `app.json.resources` deterministisch ins Build-Verzeichnis kopieren und über die Preview ausliefern.
+11. **Assets und Build-Ausgabe** (`docs/11-assets-und-ausgabe.md`): `app.json.resources` und lokale CSS-Dateien deterministisch ins Build-Verzeichnis kopieren und über die Preview ausliefern.
 12. **Minifizierung und Source Maps** (`docs/12-minifizierung.md`): optionale token-aware Whitespace-/Kommentar-Minifizierung und zeilenbasierte Source Maps; Sencha-kompatible Optimierungen weiter ergänzen.
 13. **Kompatibilitätsausbau** (`docs/13-kompatibilitaet.md`): weitere App-, Workspace-, Paket-, Theme- und Produktions-Build-Fälle ergänzen.
 

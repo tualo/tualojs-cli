@@ -1,8 +1,10 @@
-# Schritt 11: App-Ressourcen
+# Schritt 11: Assets und Build-Ausgabe
 
 ## Verhalten
 
 Der Compiler verarbeitet lokale Einträge aus `app.json.resources` als Pfadstrings oder Objekte mit `path`, `output` und optional `remote`. Verzeichnisse werden rekursiv kopiert nach `<out>/resources/<output>`; ohne `output` wird ein stabiler relativer Zielpfad aus dem Quellpfad gebildet. Remote-Ressourcen werden nicht kopiert.
+
+Lokale statische Stylesheets aus `app.json.css` werden an ihrem relativen Pfad ins Build-Verzeichnis kopiert und in der Preview eingebunden. Remote-CSS wird direkt verlinkt. Dynamische Sencha-Platzhalter wie `${build.out.css.path}` werden übersprungen, da sie auf Sass-/Theme-Build-Ausgaben verweisen.
 
 Build-Pfade bleiben auf das App-Verzeichnis beschränkt, Output-Pfade auf den Ressourcen-Zielordner. Symlinks werden übersprungen und doppelte Zielpfade mit unterschiedlichem Inhalt als Konflikt gemeldet. Resource-Quellpfade werden vom Watcher beobachtet. Die Preview liefert generierte Ressourcen unter `/resources/` aus.
 
@@ -15,9 +17,10 @@ Transitive SDK-Packages können zusätzlich `sencha.resources` deklarieren. Dies
 - Integrationstest für Verzeichnis- und Einzeldatei-Ressourcen sowie `output`-Ziele.
 - Integrationstest für `${build.id}/resources` aus einem vorherigen Sencha-Build.
 - Preview-HTTP-Test für den Abruf einer kopierten Resource.
+- Build- und Preview-Test für ein lokales `app.json.css`-Stylesheet.
 - Fake-SDK-Integrationstest für ein transitive Package-Resource-Verzeichnis.
 - `testdata/sample` wird aus seinem Sencha-`resources`-Ordner nach `build-go/resources/shared` kopiert.
 
 ## Grenzen
 
-CSS/Sass-Transformationen aus Source-SCSS, Inlining, Cache-Busting und AppCache-Manifeste sind noch nicht implementiert. Für die Preview werden vorhandene Sencha-App-CSS-Artefakte bevorzugt.
+Sass-Transformationen aus Source-SCSS, CSS-Inlining, Cache-Busting und AppCache-Manifeste sind noch nicht implementiert. Für die Preview werden vorhandene Sencha-App-CSS-Artefakte bevorzugt.

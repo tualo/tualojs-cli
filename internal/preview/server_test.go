@@ -18,7 +18,7 @@ import (
 func TestPreviewServesShellFrameworkThemeAndBundle(t *testing.T) {
 	root := t.TempDir()
 	files := map[string]string{
-		"app.json":                       `{"name":"PreviewApp","namespace":"PreviewApp","toolkit":"modern","theme":"theme-material","classpath":["app"],"resources":[{"path":"app-assets","output":"shared"}],"js":[{"path":"app.js","bundle":true}]}`,
+		"app.json":                       `{"name":"PreviewApp","namespace":"PreviewApp","toolkit":"modern","theme":"theme-material","classpath":["app"],"resources":[{"path":"app-assets","output":"shared"}],"css":[{"path":"styles/app.css"}],"js":[{"path":"app.js","bundle":true}]}`,
 		"workspace.json":                 `{"frameworks":{"ext":{"path":"sdk","version":"8.0.0.43"}}}`,
 		"sdk/package.json":               `{"name":"ext","version":"8.0.0.43","compatVersion":"8.0.0"}`,
 		"sdk/packages/core/package.json": `{"version":"8.0.0.43","sencha":{"name":"core","classpath":"${package.dir}/src"}}`,
@@ -30,6 +30,7 @@ func TestPreviewServesShellFrameworkThemeAndBundle(t *testing.T) {
 		"app.js":              `Ext.application({name: 'PreviewApp', extend: 'PreviewApp.Main'});`,
 		"app/Main.js":         `Ext.define('PreviewApp.Main', { extend: 'Ext.Panel', requires: ['Ext.scroll.Scroller'] });`,
 		"app-assets/logo.txt": "preview logo",
+		"styles/app.css":      "body { background: red; }",
 	}
 	for name, content := range files {
 		path := filepath.Join(root, name)
@@ -73,6 +74,8 @@ func TestPreviewServesShellFrameworkThemeAndBundle(t *testing.T) {
 		{path: "/app.js.map", content: `"version":3`},
 		{path: "/sources/app/Main.js", content: "PreviewApp.Main"},
 		{path: "/resources/shared/logo.txt", content: "preview logo"},
+		{path: "/", content: "/css/styles/app.css"},
+		{path: "/css/styles/app.css", content: "background: red"},
 		{path: "/sdk/ext.js", content: "window.Ext"},
 		{path: "/", content: "Ext.scroll.Scroller"},
 		{path: "/sdk/classes/mixin/Factoryable.js", content: "Ext.mixin.Factoryable"},

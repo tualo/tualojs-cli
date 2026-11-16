@@ -21,6 +21,7 @@ type appConfig struct {
 	Classic    toolkitProfile          `json:"classic"`
 	Modern     toolkitProfile          `json:"modern"`
 	JavaScript []jsEntry               `json:"js"`
+	CSS        resourceList            `json:"css"`
 	Resources  resourceList            `json:"resources"`
 }
 
@@ -30,7 +31,8 @@ type buildProfile struct {
 }
 
 type toolkitProfile struct {
-	JavaScript []jsEntry `json:"js"`
+	JavaScript []jsEntry    `json:"js"`
+	CSS        resourceList `json:"css"`
 }
 
 type pathList []string

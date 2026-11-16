@@ -30,6 +30,7 @@ type BuildResult struct {
 	WatchPaths           []string
 	ResourcesPath        string
 	ResourceFiles        int
+	StyleSheets          []StyleSheet
 	FrameworkClasses     []string
 	FrameworkFiles       map[string]string
 	SourceFiles          map[string]string
@@ -118,6 +119,10 @@ func BuildWithOutputOptions(appDir, outputDir, selectedToolkit string, normalize
 	if err != nil {
 		return BuildResult{}, err
 	}
+	styleSheets, styleWatchPaths, err := resolveStylesheets(root, config, toolkit, mode)
+	if err != nil {
+		return BuildResult{}, err
+	}
 	appPackages, err := resolveAppPackages(root, config.Requires, toolkit)
 	if err != nil {
 		return BuildResult{}, err
@@ -176,6 +181,7 @@ func BuildWithOutputOptions(appDir, outputDir, selectedToolkit string, normalize
 	watchPaths := append([]string{}, appPackages.watchPaths...)
 	watchPaths = append(watchPaths, frameworkPackages.watchPaths...)
 	watchPaths = append(watchPaths, resourceWatchPaths...)
+	watchPaths = append(watchPaths, styleWatchPaths...)
 	watchPaths = append(watchPaths, filepath.Join(root, "app.json"), filepath.Join(root, "workspace.json"), entryPath)
 	for _, sourcePath := range paths {
 		if sourcePath.framework {
@@ -231,6 +237,10 @@ func BuildWithOutputOptions(appDir, outputDir, selectedToolkit string, normalize
 	if err != nil {
 		return BuildResult{}, err
 	}
+	copiedStylesheets, err := copyStylesheets(styleSheets, outputRoot, outputPath)
+	if err != nil {
+		return BuildResult{}, err
+	}
 	if err := writeFileAtomic(outputPath, bundle); err != nil {
 		return BuildResult{}, fmt.Errorf("write bundle %s: %w", outputPath, err)
 	}
@@ -256,6 +266,7 @@ func BuildWithOutputOptions(appDir, outputDir, selectedToolkit string, normalize
 		WatchPaths:           watchPaths,
 		ResourcesPath:        filepath.Join(outputRoot, "resources"),
 		ResourceFiles:        resourceFiles,
+		StyleSheets:          copiedStylesheets,
 		FrameworkClasses:     frameworkClasses,
 		FrameworkFiles:       frameworkFiles,
 		SourceFiles:          sourceFiles,

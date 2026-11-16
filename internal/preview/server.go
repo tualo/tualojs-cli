@@ -113,6 +113,21 @@ func newHandler(appDir string, current *atomic.Pointer[previewState]) http.Handl
 		}
 		http.ServeFile(w, r, path)
 	})
+	mux.HandleFunc("/css/", func(w http.ResponseWriter, r *http.Request) {
+		name := strings.TrimPrefix(r.URL.Path, "/css/")
+		if name == "" || strings.Contains(name, "..") {
+			http.NotFound(w, r)
+			return
+		}
+		for _, stylesheet := range current.Load().result.StyleSheets {
+			if !stylesheet.Remote && stylesheet.URL == name {
+				w.Header().Set("Cache-Control", "no-store")
+				http.ServeFile(w, r, stylesheet.Path)
+				return
+			}
+		}
+		http.NotFound(w, r)
+	})
 	mux.HandleFunc("/sources/", func(w http.ResponseWriter, r *http.Request) {
 		state := current.Load()
 		name := strings.TrimPrefix(r.URL.Path, "/sources/")
@@ -247,6 +262,14 @@ func deduplicatePreviewStrings(values []string) []string {
 
 func previewHTML(state *previewState) string {
 	frameworkClasses, _ := json.Marshal(state.result.FrameworkClasses)
+	var cssLinks strings.Builder
+	for _, stylesheet := range state.result.StyleSheets {
+		href := stylesheet.URL
+		if !stylesheet.Remote {
+			href = "/css/" + href
+		}
+		fmt.Fprintf(&cssLinks, "  <link rel=\"stylesheet\" href=\"%s\">\n", html.EscapeString(href))
+	}
 	return fmt.Sprintf(`<!doctype html>
 <html>
 <head>
@@ -254,7 +277,7 @@ func previewHTML(state *previewState) string {
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>%s — Go Ext JS preview</title>
   <link rel="stylesheet" href="/sdk/theme/%s">
-  <script src="/sdk/ext.js"></script>
+%s  <script src="/sdk/ext.js"></script>
 </head>
 <body>
   <script>
@@ -289,7 +312,7 @@ func previewHTML(state *previewState) string {
   </script>
 </body>
 </html>
-`, html.EscapeString(state.result.AppName), html.EscapeString(state.themeCSSName), string(frameworkClasses), state.buildID)
+`, html.EscapeString(state.result.AppName), html.EscapeString(state.themeCSSName), cssLinks.String(), string(frameworkClasses), state.buildID)
 }
 
 func frameworkClassFromURL(requestPath string) (string, bool) {
