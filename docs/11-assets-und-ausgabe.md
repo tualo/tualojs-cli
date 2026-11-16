@@ -20,4 +20,4 @@ Transitive SDK-Packages können zusätzlich `sencha.resources` deklarieren. Dies
 
 ## Grenzen
 
-CSS/Sass-Transformationen, Inlining, Cache-Busting und AppCache-Manifeste sind noch nicht implementiert.
+CSS/Sass-Transformationen aus Source-SCSS, Inlining, Cache-Busting und AppCache-Manifeste sind noch nicht implementiert. Für die Preview werden vorhandene Sencha-App-CSS-Artefakte bevorzugt.

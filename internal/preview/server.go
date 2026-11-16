@@ -186,17 +186,12 @@ func makePreviewState(result compiler.BuildResult) (*previewState, error) {
 		}
 		frameworkJS = filepath.Join(result.FrameworkSDKPath, "build", frameworkFile)
 	}
-	themeResources := filepath.Join(result.FrameworkSDKPath, "build", result.Toolkit, result.Theme, "resources")
-	themeCSS := filepath.Join(themeResources, result.Theme+"-all.css")
-	themeCSSName := result.Theme + "-all.css"
-	if _, err := os.Stat(themeCSS); err != nil {
-		generatedResources := filepath.Join(result.AppDir, "build", "development", result.AppName, "resources")
-		generatedCSS := filepath.Join(generatedResources, result.AppName+"-all.css")
-		if _, generatedErr := os.Stat(generatedCSS); generatedErr == nil {
-			themeResources = generatedResources
-			themeCSS = generatedCSS
-			themeCSSName = result.AppName + "-all.css"
-		} else {
+	themeResources, themeCSS, themeCSSName, found := findGeneratedAppCSS(result)
+	if !found {
+		themeResources = filepath.Join(result.FrameworkSDKPath, "build", result.Toolkit, result.Theme, "resources")
+		themeCSS = filepath.Join(themeResources, result.Theme+"-all.css")
+		themeCSSName = result.Theme + "-all.css"
+		if info, err := os.Stat(themeCSS); err != nil || !info.Mode().IsRegular() {
 			themeResources = ""
 			themeCSS = ""
 			themeCSSName = "preview.css"
@@ -219,6 +214,35 @@ func makePreviewState(result compiler.BuildResult) (*previewState, error) {
 		themeCSSName:   themeCSSName,
 		buildID:        time.Now().UTC().Format(time.RFC3339Nano),
 	}, nil
+}
+
+func findGeneratedAppCSS(result compiler.BuildResult) (string, string, string, bool) {
+	modes := deduplicatePreviewStrings([]string{result.Mode, "production", "development"})
+	for _, mode := range modes {
+		bases := []string{
+			filepath.Join(result.AppDir, "build", mode, result.AppName, result.Toolkit, "resources"),
+			filepath.Join(result.AppDir, "build", mode, result.AppName, "resources"),
+		}
+		for _, resources := range bases {
+			css := filepath.Join(resources, result.AppName+"-all.css")
+			if info, err := os.Stat(css); err == nil && info.Mode().IsRegular() {
+				return resources, css, filepath.Base(css), true
+			}
+		}
+	}
+	return "", "", "", false
+}
+
+func deduplicatePreviewStrings(values []string) []string {
+	seen := make(map[string]bool, len(values))
+	var result []string
+	for _, value := range values {
+		if value != "" && !seen[value] {
+			seen[value] = true
+			result = append(result, value)
+		}
+	}
+	return result
 }
 
 func previewHTML(state *previewState) string {

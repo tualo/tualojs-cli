@@ -142,6 +142,42 @@ func TestPreviewFallsBackToSenchaGeneratedThemeCSS(t *testing.T) {
 	}
 }
 
+func TestPreviewPrefersCombinedSenchaAppCSS(t *testing.T) {
+	root := t.TempDir()
+	sdkRoot := filepath.Join(root, "ext")
+	frameworkJS := filepath.Join(sdkRoot, "build", "ext-all-debug.js")
+	sdkResources := filepath.Join(sdkRoot, "build", "classic", "theme-triton", "resources")
+	combinedResources := filepath.Join(root, "build", "production", "SampleForm", "classic", "resources")
+	for path, content := range map[string]string{
+		frameworkJS: "window.Ext = window.Ext || {};",
+		filepath.Join(sdkResources, "theme-triton-all.css"):    "body { color: gray; }",
+		filepath.Join(combinedResources, "SampleForm-all.css"): "body { color: blue; }",
+	} {
+		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	state, err := makePreviewState(compiler.BuildResult{
+		AppName:              "SampleForm",
+		AppDir:               root,
+		FrameworkSDKPath:     sdkRoot,
+		FrameworkRuntimePath: frameworkJS,
+		Toolkit:              "classic",
+		Theme:                "theme-triton",
+		Mode:                 "production",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if state.themeResources != combinedResources || state.themeCSSName != "SampleForm-all.css" {
+		t.Fatalf("preview did not choose generated app CSS: %#v", state)
+	}
+}
+
 func TestWatcherRebuildsAfterSourceChanges(t *testing.T) {
 	root := t.TempDir()
 	files := map[string]string{
