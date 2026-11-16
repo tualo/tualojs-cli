@@ -441,7 +441,7 @@ func TestBuildWritesLineLevelSourceMap(t *testing.T) {
 	if err := json.Unmarshal(mapData, &sourceMap); err != nil {
 		t.Fatal(err)
 	}
-	if sourceMap.Version != 3 || sourceMap.File != "app.js" || len(sourceMap.Sources) != 2 || len(sourceMap.SourcesContent) != 2 || sourceMap.Mappings == "" {
+	if sourceMap.Version != 3 || sourceMap.File != "app.js" || len(sourceMap.Sources) != 2 || len(sourceMap.SourcesContent) != 2 || !strings.Contains(sourceMap.Mappings, ",") {
 		t.Fatalf("unexpected source map: %#v", sourceMap)
 	}
 	if !strings.Contains(strings.Join(sourceMap.SourcesContent, "\n"), "source mapped") {

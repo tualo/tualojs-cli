@@ -2,9 +2,9 @@
 
 ## Source Maps
 
-`build` und `watch` unterstützen `-source-map`. Der Compiler erzeugt `app.js.map` im Source Map v3-Format und ergänzt `//# sourceMappingURL=app.js.map` im Bundle. Die Maps enthalten Zeilen-Zuordnungen, die Quelldateien relativ zum Build-Ordner und `sourcesContent`.
+`build` und `watch` unterstützen `-source-map`. Der Compiler erzeugt `app.js.map` im Source Map v3-Format und ergänzt `//# sourceMappingURL=app.js.map` im Bundle. Die Maps enthalten Token-Zuordnungen mit UTF-16-Spalten, Quelldateien und `sourcesContent`.
 
-Der Preview-Server liefert die Map über `/app.js.map` und Quelldateien über `/sources/` aus. Die Zuordnungen sind absichtlich zeilenbasiert; die aktuelle Transformation kann Token innerhalb einer Zeile ändern.
+Der Preview-Server liefert die Map über `/app.js.map` und Quelldateien über `/sources/` aus. Source maps bleiben mit der token-aware Whitespace-Minifizierung aktiv. Die aktuelle `let`/`const`-Normalisierung und der Minifier verändern keine Token-Reihenfolge; allgemeine Transformationen könnten präzisere Mapping-Phasen erfordern.
 
 ## Minifizierung
 
@@ -14,6 +14,6 @@ Dies ist noch keine Sencha-Cmd-äquivalente Minifizierung: Identifier werden nic
 
 ## Prüfungen
 
-- Integrationstest prüft die Source Map v3-Struktur, Quellinhalte und `sourceMappingURL`, auch in Kombination mit `-minify`.
+- Integrationstest prüft die Source Map v3-Struktur, mehrere Token-Spalten, Quellinhalte und `sourceMappingURL`, auch in Kombination mit `-minify`.
 - HTTP-Test prüft den Abruf von `app.js.map` und einer Quelldatei.
 - `node --check` prüft das erzeugte Bundle mit Source-Map-Kommentar.

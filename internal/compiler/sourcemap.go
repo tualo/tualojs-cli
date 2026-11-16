@@ -4,6 +4,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"strings"
+	"unicode/utf16"
+	"unicode/utf8"
 )
 
 const sourceMapBase64 = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/"
@@ -20,23 +22,20 @@ type sourceMapV3 struct {
 
 func assembleBundle(sources []sourceFile, normalizeLetConst, includeSourceMap, minify bool) ([]byte, []byte, error) {
 	var bundle strings.Builder
-	mappingLines := []string{""}
+	mappings := sourceMapMappings{lines: []string{""}}
 	generatedLine := 0
 	write := func(text string) {
 		bundle.WriteString(text)
 		for i := 0; i < len(text); i++ {
 			if text[i] == '\n' {
 				generatedLine++
-				if generatedLine == len(mappingLines) {
-					mappingLines = append(mappingLines, "")
-				}
+				mappings.ensureLine(generatedLine)
 			}
 		}
 	}
 
 	sourceMap := sourceMapV3{Version: 3, File: "app.js", SourceRoot: "/sources/", Names: []string{}}
 	sourceIndexes := make(map[string]int)
-	previousSource, previousLine, previousColumn := 0, 0, 0
 	for _, source := range sources {
 		content := string(source.data)
 		if normalizeLetConst {
@@ -68,20 +67,29 @@ func assembleBundle(sources []sourceFile, normalizeLetConst, includeSourceMap, m
 				}
 				sourceMap.SourcesContent = append(sourceMap.SourcesContent, string(original))
 			}
-			lines := strings.Split(content, "\n")
-			if strings.HasSuffix(content, "\n") {
-				lines = lines[:len(lines)-1]
+			originalTokens, originalErr := tokenize(string(source.data))
+			generatedTokens, generatedErr := tokenize(content)
+			if originalErr == nil && generatedErr == nil && tokenSequencesAlign(originalTokens, generatedTokens) {
+				originalPositions := tokenPositions(string(source.data), originalTokens)
+				generatedPositions := tokenPositions(content, generatedTokens)
+				for i, generated := range generatedPositions {
+					mappings.add(generatedLine+generated.line, generated.column, index, originalPositions[i].line, originalPositions[i].column)
+				}
+			} else {
+				lines := strings.Split(content, "\n")
+				if strings.HasSuffix(content, "\n") {
+					lines = lines[:len(lines)-1]
+				}
+				if len(lines) == 0 {
+					lines = []string{""}
+				}
+				for originalLine := range lines {
+					mappings.add(generatedLine+originalLine, 0, index, originalLine, 0)
+				}
 			}
-			if len(lines) == 0 {
-				lines = []string{""}
-			}
-			for originalLine, line := range lines {
-				segment := encodeVLQ(0) + encodeVLQ(index-previousSource) + encodeVLQ(originalLine-previousLine) + encodeVLQ(-previousColumn)
-				mappingLines[generatedLine] = segment
-				previousSource = index
-				previousLine = originalLine
-				previousColumn = 0
-				write(line + "\n")
+			write(content)
+			if len(content) == 0 || content[len(content)-1] != '\n' {
+				write("\n")
 			}
 		} else {
 			write(content)
@@ -94,7 +102,7 @@ func assembleBundle(sources []sourceFile, normalizeLetConst, includeSourceMap, m
 	var sourceMapData []byte
 	if includeSourceMap {
 		write("//# sourceMappingURL=app.js.map\n")
-		sourceMap.Mappings = strings.Join(mappingLines, ";")
+		sourceMap.Mappings = strings.Join(mappings.lines, ";")
 		encoded, err := json.Marshal(sourceMap)
 		if err != nil {
 			return nil, nil, fmt.Errorf("encode source map: %w", err)
@@ -102,6 +110,88 @@ func assembleBundle(sources []sourceFile, normalizeLetConst, includeSourceMap, m
 		sourceMapData = encoded
 	}
 	return []byte(bundle.String()), sourceMapData, nil
+}
+
+type mappedPosition struct {
+	line   int
+	column int
+}
+
+type sourceMapMappings struct {
+	lines                      []string
+	previousSource             int
+	previousOriginalLine       int
+	previousOriginalColumn     int
+	previousGeneratedLine      int
+	previousGeneratedColumn    int
+	hasPreviousGeneratedColumn bool
+}
+
+func (m *sourceMapMappings) ensureLine(line int) {
+	for len(m.lines) <= line {
+		m.lines = append(m.lines, "")
+	}
+}
+
+func (m *sourceMapMappings) add(generatedLine, generatedColumn, sourceIndex, originalLine, originalColumn int) {
+	m.ensureLine(generatedLine)
+	generatedDelta := generatedColumn
+	if m.hasPreviousGeneratedColumn && m.previousGeneratedLine == generatedLine {
+		generatedDelta -= m.previousGeneratedColumn
+	}
+	segment := encodeVLQ(generatedDelta) +
+		encodeVLQ(sourceIndex-m.previousSource) +
+		encodeVLQ(originalLine-m.previousOriginalLine) +
+		encodeVLQ(originalColumn-m.previousOriginalColumn)
+	if m.lines[generatedLine] != "" {
+		m.lines[generatedLine] += ","
+	}
+	m.lines[generatedLine] += segment
+	m.previousSource = sourceIndex
+	m.previousOriginalLine = originalLine
+	m.previousOriginalColumn = originalColumn
+	m.previousGeneratedLine = generatedLine
+	m.previousGeneratedColumn = generatedColumn
+	m.hasPreviousGeneratedColumn = true
+}
+
+func tokenSequencesAlign(original, generated []jsToken) bool {
+	if len(original) != len(generated) {
+		return false
+	}
+	for i := range original {
+		if original[i].kind == generated[i].kind && original[i].value == generated[i].value {
+			continue
+		}
+		if original[i].kind == identifierToken && generated[i].kind == identifierToken &&
+			(original[i].value == "let" || original[i].value == "const") && generated[i].value == "var" {
+			continue
+		}
+		return false
+	}
+	return true
+}
+
+func tokenPositions(source string, tokens []jsToken) []mappedPosition {
+	positions := make([]mappedPosition, len(tokens))
+	line, column, offset := 0, 0, 0
+	for i, token := range tokens {
+		for offset < token.start {
+			r, size := utf8.DecodeRuneInString(source[offset:])
+			if size == 0 {
+				break
+			}
+			if r == '\n' || r == '\r' && (offset+size >= len(source) || source[offset+size] != '\n') {
+				line++
+				column = 0
+			} else if r != '\r' {
+				column += utf16.RuneLen(r)
+			}
+			offset += size
+		}
+		positions[i] = mappedPosition{line: line, column: column}
+	}
+	return positions
 }
 
 func encodeVLQ(value int) string {
