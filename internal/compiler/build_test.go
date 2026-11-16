@@ -424,6 +424,26 @@ func TestBuildRejectsResourceOutputOutsideBuildResources(t *testing.T) {
 	}
 }
 
+func TestBuildExpandsSenchaBuildIDResourcePath(t *testing.T) {
+	root := makeFixture(t, map[string]string{
+		"app.json":     `{"name":"Example","namespace":"Example","classpath":["app"],"resources":[{"path":"${build.id}/resources"}],"js":[{"path":"app.js","bundle":true}]}`,
+		"app.js":       `Ext.application({name: 'Example'});`,
+		"app/Empty.js": "",
+		"build/production/Example/resources/generated.txt": "from prior Sencha build",
+	})
+	result, err := Build(root, "out")
+	if err != nil {
+		t.Fatal(err)
+	}
+	content, err := os.ReadFile(filepath.Join(result.ResourcesPath, "generated.txt"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(content) != "from prior Sencha build" {
+		t.Fatalf("copied resource = %q, want prior-build content", content)
+	}
+}
+
 func TestBuildExpandsToolkitClasspath(t *testing.T) {
 	root := makeFixture(t, map[string]string{
 		"app.json":           `{"name":"Example","namespace":"Example","classpath":["app","${toolkit.name}/src","both"],"js":[{"path":"app.js","bundle":true}]}`,

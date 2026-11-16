@@ -110,7 +110,7 @@ func BuildWithSourceMap(appDir, outputDir, selectedToolkit string, normalizeLetC
 	if err != nil {
 		return BuildResult{}, err
 	}
-	resources, resourceWatchPaths, err := resolveResources(root, config.Resources, toolkit)
+	resources, resourceWatchPaths, err := resolveResources(root, config.Name, mode, config.Resources, toolkit)
 	if err != nil {
 		return BuildResult{}, err
 	}

@@ -13,7 +13,7 @@ type resolvedResource struct {
 	output string
 }
 
-func resolveResources(appRoot string, entries resourceList, toolkit string) ([]resolvedResource, []string, error) {
+func resolveResources(appRoot, appName, mode string, entries resourceList, toolkit string) ([]resolvedResource, []string, error) {
 	var resources []resolvedResource
 	var watchPaths []string
 	for _, entry := range entries {
@@ -23,7 +23,9 @@ func resolveResources(appRoot string, entries resourceList, toolkit string) ([]r
 		if entry.Path == "" {
 			return nil, nil, fmt.Errorf("app.json contains a resource entry with an empty path")
 		}
-		paths, err := expandToolkitPaths([]string{entry.Path}, toolkit)
+		buildID := resolveBuildID(appRoot, appName, mode)
+		resourcePath := strings.ReplaceAll(entry.Path, "${build.id}", buildID)
+		paths, err := expandToolkitPaths([]string{resourcePath}, toolkit)
 		if err != nil {
 			return nil, nil, err
 		}
@@ -33,19 +35,22 @@ func resolveResources(appRoot string, entries resourceList, toolkit string) ([]r
 		}
 		info, err := os.Stat(source)
 		if err != nil {
+			if strings.Contains(entry.Path, "${build.id}") && os.IsNotExist(err) {
+				continue
+			}
 			return nil, nil, fmt.Errorf("resource source %q: %w", entry.Path, err)
 		}
-		output := entry.Output
+		output := strings.ReplaceAll(entry.Output, "${build.id}", buildID)
 		if output != "" {
 			outputs, err := expandToolkitPaths([]string{output}, toolkit)
 			if err != nil {
 				return nil, nil, err
 			}
 			output = outputs[0]
-		} else if info.IsDir() && filepath.Base(filepath.Clean(entry.Path)) == "resources" {
+		} else if info.IsDir() && filepath.Base(filepath.Clean(paths[0])) == "resources" {
 			output = "."
 		} else {
-			output = filepath.ToSlash(filepath.Clean(entry.Path))
+			output = filepath.ToSlash(filepath.Clean(paths[0]))
 		}
 		if err := validateResourceOutput(output); err != nil {
 			return nil, nil, fmt.Errorf("resource output for %q: %w", entry.Path, err)
@@ -54,6 +59,22 @@ func resolveResources(appRoot string, entries resourceList, toolkit string) ([]r
 		watchPaths = append(watchPaths, source)
 	}
 	return resources, uniquePaths(watchPaths), nil
+}
+
+func resolveBuildID(appRoot, appName, mode string) string {
+	order := []string{mode, "production", "development"}
+	seen := make(map[string]bool)
+	for _, candidateMode := range order {
+		if candidateMode == "" || seen[candidateMode] {
+			continue
+		}
+		seen[candidateMode] = true
+		candidate := filepath.Join("build", candidateMode, appName)
+		if info, err := os.Stat(filepath.Join(appRoot, candidate)); err == nil && info.IsDir() {
+			return filepath.ToSlash(candidate)
+		}
+	}
+	return filepath.ToSlash(filepath.Join("build", mode, appName))
 }
 
 func validateResourceOutput(output string) error {
