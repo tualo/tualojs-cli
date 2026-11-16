@@ -412,6 +412,31 @@ func TestBuildWritesLineLevelSourceMap(t *testing.T) {
 	}
 }
 
+func TestBuildMinifiesAndKeepsSourceMap(t *testing.T) {
+	root := makeFixture(t, map[string]string{
+		"app.json": `{"name":"Example","namespace":"Example","classpath":["app"],"js":[{"path":"app.js","bundle":true}]}`,
+		"app.js":   `Ext.application({ name: 'Example', extend: 'Example.Entry' });`,
+		"app/Entry.js": `Ext.define('Example.Entry', {
+    extend: 'Ext.Component', // remove this comment
+    value: 'kept string'
+});`,
+	})
+	result, err := BuildWithOutputOptions(root, "out", "", false, BuildModeDevelopment, true, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	bundle, err := os.ReadFile(result.OutputPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(bundle), "remove this comment") || !strings.Contains(string(bundle), "value:'kept string'") || !strings.Contains(string(bundle), "sourceMappingURL=app.js.map") {
+		t.Fatalf("unexpected minified bundle: %s", bundle)
+	}
+	if _, err := os.Stat(result.SourceMapPath); err != nil {
+		t.Fatalf("missing source map: %v", err)
+	}
+}
+
 func TestBuildRejectsResourceOutputOutsideBuildResources(t *testing.T) {
 	root := makeFixture(t, map[string]string{
 		"app.json":           `{"name":"Example","namespace":"Example","classpath":["app"],"resources":[{"path":"resources","output":"../outside"}],"js":[{"path":"app.js","bundle":true}]}`,

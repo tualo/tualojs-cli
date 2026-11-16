@@ -12,6 +12,7 @@ const (
 	stringToken      tokenKind = 's'
 	templateToken    tokenKind = 't'
 	regexToken       tokenKind = 'r'
+	numberToken      tokenKind = 'n'
 	punctuationToken tokenKind = 'p'
 )
 
@@ -466,6 +467,17 @@ func tokenize(source string) ([]jsToken, error) {
 			tokens = append(tokens, jsToken{kind: identifierToken, value: source[start:i], start: start, end: i})
 			continue
 		}
+		if isNumberStart(source, i) {
+			start := i
+			i = consumeNumber(source, i)
+			tokens = append(tokens, jsToken{kind: numberToken, value: source[start:i], start: start, end: i})
+			continue
+		}
+		if end := punctuatorEnd(source, i); end > i+1 {
+			tokens = append(tokens, jsToken{kind: punctuationToken, value: source[i:end], start: i, end: end})
+			i = end
+			continue
+		}
 		tokens = append(tokens, jsToken{kind: punctuationToken, value: string(c), start: i, end: i + 1})
 		i++
 	}
@@ -486,11 +498,64 @@ func canStartRegex(tokens []jsToken) bool {
 		}
 	}
 	switch previous.value {
-	case "(", "[", "{", "=", ":", ",", ";", "!", "?", "&", "|", "+", "-", "*", "%", "~", "^", "<", ">":
+	case "(", "[", "{", "=", "=>", ":", ",", ";", "!", "?", "&", "|", "+", "-", "*", "%", "~", "^", "<", ">":
 		return true
 	default:
 		return false
 	}
+}
+
+func isNumberStart(source string, index int) bool {
+	return index < len(source) && (source[index] >= '0' && source[index] <= '9' || source[index] == '.' && index+1 < len(source) && source[index+1] >= '0' && source[index+1] <= '9')
+}
+
+func consumeNumber(source string, index int) int {
+	if index+1 < len(source) && source[index] == '0' {
+		switch source[index+1] {
+		case 'x', 'X', 'b', 'B', 'o', 'O':
+			index += 2
+			for index < len(source) && (isIdentifierPart(source[index]) || source[index] == '_') {
+				index++
+			}
+			return index
+		}
+	}
+	for index < len(source) && (source[index] >= '0' && source[index] <= '9' || source[index] == '_') {
+		index++
+	}
+	if index < len(source) && source[index] == '.' {
+		index++
+		for index < len(source) && (source[index] >= '0' && source[index] <= '9' || source[index] == '_') {
+			index++
+		}
+	}
+	if index < len(source) && (source[index] == 'e' || source[index] == 'E') {
+		index++
+		if index < len(source) && (source[index] == '+' || source[index] == '-') {
+			index++
+		}
+		for index < len(source) && (source[index] >= '0' && source[index] <= '9' || source[index] == '_') {
+			index++
+		}
+	}
+	if index < len(source) && source[index] == 'n' {
+		index++
+	}
+	return index
+}
+
+var jsPunctuators = []string{
+	">>>=", "===", "!==", "**=", "&&=", "||=", "??=", "<<=", ">>=", "...",
+	"=>", "==", "!=", "<=", ">=", "++", "--", "&&", "||", "??", "?.", "+=", "-=", "*=", "/=", "%=", "<<", ">>>", ">>", "**", "&=", "|=", "^=",
+}
+
+func punctuatorEnd(source string, start int) int {
+	for _, punctuator := range jsPunctuators {
+		if strings.HasPrefix(source[start:], punctuator) {
+			return start + len(punctuator)
+		}
+	}
+	return start + 1
 }
 
 func regexLiteralEnd(source string, start int) (int, bool) {

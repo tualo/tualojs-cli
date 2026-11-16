@@ -8,10 +8,12 @@ Der Preview-Server liefert die Map über `/app.js.map` und Quelldateien über `/
 
 ## Minifizierung
 
-Minifizierung ist noch nicht implementiert. Vor der Umsetzung muss das Verhalten der festgelegten Sencha-Cmd-8.0.0-Referenzbuilds bestimmt werden.
+`-minify` entfernt Kommentare und unnötigen Whitespace anhand des Go-Tokenizers. Strings, Regex-Literale und die Anzahl der Zeilenumbrüche bleiben erhalten; `/*! ... */`- und `//!`-Lizenzkommentare werden bewahrt. Die Option ist für `build` und `watch` verfügbar.
+
+Dies ist noch keine Sencha-Cmd-äquivalente Minifizierung: Identifier werden nicht umbenannt, toter Code nicht entfernt und Closure-Compiler-Optimierungen nicht nachgebildet.
 
 ## Prüfungen
 
-- Integrationstest prüft die Source Map v3-Struktur, Quellinhalte und `sourceMappingURL`.
+- Integrationstest prüft die Source Map v3-Struktur, Quellinhalte und `sourceMappingURL`, auch in Kombination mit `-minify`.
 - HTTP-Test prüft den Abruf von `app.js.map` und einer Quelldatei.
 - `node --check` prüft das erzeugte Bundle mit Source-Map-Kommentar.

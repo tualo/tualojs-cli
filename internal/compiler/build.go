@@ -74,6 +74,10 @@ func BuildWithMode(appDir, outputDir, selectedToolkit string, normalizeLetConst 
 }
 
 func BuildWithSourceMap(appDir, outputDir, selectedToolkit string, normalizeLetConst bool, mode string, includeSourceMap bool) (BuildResult, error) {
+	return BuildWithOutputOptions(appDir, outputDir, selectedToolkit, normalizeLetConst, mode, includeSourceMap, false)
+}
+
+func BuildWithOutputOptions(appDir, outputDir, selectedToolkit string, normalizeLetConst bool, mode string, includeSourceMap, minify bool) (BuildResult, error) {
 	if mode == "" {
 		mode = BuildModeDevelopment
 	}
@@ -209,7 +213,7 @@ func BuildWithSourceMap(appDir, outputDir, selectedToolkit string, normalizeLetC
 	if err := os.MkdirAll(outputRoot, 0o755); err != nil {
 		return BuildResult{}, fmt.Errorf("create output directory: %w", err)
 	}
-	bundle, sourceMapData, err := assembleBundle(ordered, normalizeLetConst, includeSourceMap)
+	bundle, sourceMapData, err := assembleBundle(ordered, normalizeLetConst, includeSourceMap, minify)
 	if err != nil {
 		return BuildResult{}, err
 	}

@@ -11,3 +11,5 @@
 /testdata/fixtures/*/bootstrap.*
 /testdata/fixtures/*/sencha-error-*.log
 /testdata/fixtures/*/.sencha/
+
+/dist/*

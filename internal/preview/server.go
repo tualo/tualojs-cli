@@ -25,6 +25,7 @@ type Config struct {
 	NormalizeLetConst bool
 	Mode              string
 	SourceMap         bool
+	Minify            bool
 	Address           string
 	Interval          time.Duration
 }
@@ -52,7 +53,7 @@ func Run(ctx context.Context, config Config) error {
 		config.Mode = compiler.BuildModeDevelopment
 	}
 
-	result, err := compiler.BuildWithSourceMap(config.AppDir, config.OutDir, config.Toolkit, config.NormalizeLetConst, config.Mode, config.SourceMap)
+	result, err := compiler.BuildWithOutputOptions(config.AppDir, config.OutDir, config.Toolkit, config.NormalizeLetConst, config.Mode, config.SourceMap, config.Minify)
 	if err != nil {
 		return err
 	}
@@ -292,7 +293,7 @@ func watch(ctx context.Context, config Config, current *atomic.Pointer[previewSt
 			if snapshotsEqual(snapshot, fileSnapshot(state.result.WatchPaths, filepath.Dir(state.result.OutputPath))) {
 				continue
 			}
-			result, err := compiler.BuildWithSourceMap(config.AppDir, config.OutDir, config.Toolkit, config.NormalizeLetConst, config.Mode, config.SourceMap)
+			result, err := compiler.BuildWithOutputOptions(config.AppDir, config.OutDir, config.Toolkit, config.NormalizeLetConst, config.Mode, config.SourceMap, config.Minify)
 			if err != nil {
 				log.Printf("rebuild failed: %v", err)
 				snapshot = fileSnapshot(state.result.WatchPaths, filepath.Dir(state.result.OutputPath))

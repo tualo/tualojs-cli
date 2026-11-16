@@ -36,11 +36,12 @@ Das Ergebnis liegt unter `testdata/fixtures/minimal-modern/build-go/app.js`. Rel
 - Ordnet referenzierte App-Klassen deterministisch in Abhängigkeitsreihenfolge. Zyklen und nicht eindeutig auflösbare doppelte Klassennamen sind Fehler; fehlende App-Klassen werden als Warnungen ausgegeben, da Projekte Klassen über dynamische Loader-Pfade nachladen können.
 - Schreibt die ausgewählten Quelldateien mit Herkunftskommentaren in ein Bundle; neben der dokumentierten Normalisierung bleiben Quellen weitgehend unverändert.
 - `-source-map` erzeugt `app.js.map` mit zeilenbasierten Zuordnungen und `sourcesContent`.
+- `-minify` entfernt token-sicher Kommentare und unnötigen Whitespace, ohne Strings, Regex-Literale oder Zeilenumbrüche zu verändern.
 - Nutzt ausschließlich die Go-Standardbibliothek.
 
 ## Grenzen dieses Schritts
 
-Der Metadatenscanner ist kein vollständiger ECMAScript-Parser. Er behandelt insbesondere keine dynamisch berechneten Anforderungen und keine beliebigen JavaScript-Ausdrücke. Die aktuelle ES-Transformation lässt `let` in Block-Scope und `for`-Köpfen unverändert, damit deren Semantik nicht durch blindes Ersetzen verloren geht. Das Bundle enthält referenzierte App- und Package-Klassen sowie den Einstieg; Framework-Runtime im Bundle, Package-Ressourcen, CSS/Sass-Kompilierung, allgemeine ES-Transformationen, Minifizierung und Sencha-Microloader-Artefakte sind noch nicht implementiert. Source Maps sind zeilenbasiert und nicht spalten- oder transformationsgenau. Das Ergebnis ist deshalb ein erster Compiler-Schnitt und noch kein vollständiger Ersatz für `sencha app build`.
+Der Metadatenscanner ist kein vollständiger ECMAScript-Parser. Er behandelt insbesondere keine dynamisch berechneten Anforderungen und keine beliebigen JavaScript-Ausdrücke. Die aktuelle ES-Transformation lässt `let` in Block-Scope und `for`-Köpfen unverändert, damit deren Semantik nicht durch blindes Ersetzen verloren geht. Das Bundle enthält referenzierte App- und Package-Klassen sowie den Einstieg; Framework-Runtime im Bundle, Package-Ressourcen, CSS/Sass-Kompilierung, allgemeine ES-Transformationen und Sencha-Microloader-Artefakte sind noch nicht implementiert. Minifizierung ist token-aware, aber noch ohne Sencha-Closure-Optimierungen. Source Maps sind zeilenbasiert und nicht spalten- oder transformationsgenau. Das Ergebnis ist deshalb ein erster Compiler-Schnitt und noch kein vollständiger Ersatz für `sencha app build`.
 
 ## Prüfungen
 

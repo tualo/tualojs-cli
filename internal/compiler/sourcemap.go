@@ -18,7 +18,7 @@ type sourceMapV3 struct {
 	Mappings       string   `json:"mappings"`
 }
 
-func assembleBundle(sources []sourceFile, normalizeLetConst, includeSourceMap bool) ([]byte, []byte, error) {
+func assembleBundle(sources []sourceFile, normalizeLetConst, includeSourceMap, minify bool) ([]byte, []byte, error) {
 	var bundle strings.Builder
 	mappingLines := []string{""}
 	generatedLine := 0
@@ -44,6 +44,13 @@ func assembleBundle(sources []sourceFile, normalizeLetConst, includeSourceMap bo
 			content, err = transformJavaScript(content)
 			if err != nil {
 				return nil, nil, fmt.Errorf("transform source %s: %w", source.name, err)
+			}
+		}
+		if minify {
+			var err error
+			content, err = minifyJavaScript(content)
+			if err != nil {
+				return nil, nil, fmt.Errorf("minify source %s: %w", source.name, err)
 			}
 		}
 		write("\n// Source: " + source.name + "\n")
