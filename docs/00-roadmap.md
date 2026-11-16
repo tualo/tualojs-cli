@@ -1,0 +1,51 @@
+# Roadmap: Sencha-Ext-JS-Compiler in Go
+
+## Ziel
+
+Ein eigenständiger Compiler in Go, der Sencha-Ext-JS-Projekte reproduzierbar baut. Der Umfang soll schrittweise anhand beobachtbaren Verhaltens und realer Projekt-Fixtures festgelegt werden. Als Referenz für Kompatibilität dienen Builds mit der jeweils festgelegten Sencha-Cmd-Version.
+
+Die Implementierung startet mit einem kleinen, durch Tests abgesicherten vertikalen Schnitt statt mit einer vorschnellen Nachbildung aller Sencha-Cmd-Funktionen.
+
+## Arbeitsregeln
+
+- Für jeden Umsetzungsschritt eine Markdown-Datei in `docs/` anlegen, bevor oder während der Schritt umgesetzt wird.
+- Verhalten zuerst anhand eines minimalen Fixtures beschreiben und mit der Referenz vergleichen, sofern Sencha Cmd verfügbar ist.
+- Jede Funktion als klar abgegrenzten Schritt implementieren; Schnittstellen und Entscheidungen in der jeweiligen Schrittdokumentation festhalten.
+- Referenz-Builds und Go-Builds mit denselben Eingaben vergleichen. Nichtdeterministische Metadaten und bekannte Abweichungen explizit dokumentieren.
+- Keine Abhängigkeit von Sencha Cmd zur Laufzeit des Go-Compilers einführen.
+
+## Vorgeschlagene Schritte
+
+1. **Kompatibilitätsziel und Fixtures festlegen** (`docs/01-kompatibilitaetsziel.md`): Ext JS 8.0.0, Sencha Cmd 8.0.0 und ein erfolgreich mit Cmd gebautes Modern-Toolkit-Fixture.
+2. **Erster Go-Build** (`docs/02-erster-go-build.md`): Go-Modul und CLI, minimales `app.json`-Modell, statische Ext-Klassenmetadaten, Abhängigkeitsordnung und einfaches JavaScript-Bundle.
+3. **Klassen-Overrides** (`docs/03-overrides.md`): `app.json`-Override-Pfade erfassen und Overrides nur bei geladenem Ziel an der richtigen Stelle einordnen.
+4. **Erstes Realprojekt** (`docs/04-default-realprojekt.md`): `default` als Universal-App einlesen, Toolkit-Klasspfade auswählen und reale Abweichungen von einem gültigen Sencha-Build erfassen.
+5. **Xtype- und Alias-Auflösung** (`docs/05-xtype-aufloesung.md`): Klassen aus `alias`, `xtype`-Konfiguration und `Ext.widget()` statisch finden.
+6. **Projektmodell erweitern** (`docs/06-projektmodell.md`): `workspace.json`, Ext-SDK-Version und transitive Package-Classpaths.
+7. **Watch-Preview-Server** (`docs/07-watch-preview.md`): Go-Build lokal ausliefern, Quellen beobachten und Browser bei erfolgreichem Neubau aktualisieren.
+8. **JavaScript-Parsing erweitern** (`docs/08-javascript-parser.md`): Lexer/Parser schrittweise auf die in echten Ext-JS-Projekten beobachteten Sprachkonstrukte ausbauen.
+9. **Abhängigkeitssemantik** (`docs/09-abhaengigkeiten.md`): dynamische Anforderungen und Framework-Klassen ergänzen.
+10. **Sencha-spezifische Transformationen** (`docs/10-transformationen.md`): Präprozessoren, Makros und Framework-Konventionen implementieren.
+11. **Assets und Build-Ausgabe** (`docs/11-assets-und-ausgabe.md`): statische Ressourcen kopieren und vollständige, wiederholbare Build-Strukturen erzeugen.
+12. **Minifizierung und Source Maps** (`docs/12-minifizierung.md`): Verhalten des gewählten Cmd-Ziels anhand Referenz-Builds spezifizieren.
+13. **Kompatibilitätsausbau** (`docs/13-kompatibilitaet.md`): weitere App-, Workspace-, Paket-, Theme- und Produktions-Build-Fälle ergänzen.
+
+## Architekturleitplanken
+
+- **CLI-Schicht:** nimmt Optionen entgegen und delegiert an den Build-Ablauf.
+- **Projektmodell:** normalisiert Konfiguration, Pfade und Eingabedateien.
+- **Compiler-Pipeline:** getrennte Phasen für Auflösung, Transformation und Ausgabe; Phasen sollen ohne CLI testbar sein.
+- **Dateisystemgrenze:** Builds arbeiten über explizite Eingabe- und Ausgabe-Optionen, damit Tests temporäre Verzeichnisse verwenden können.
+- **Determinismus:** stabile Sortierung, keine implizite Abhängigkeit von Verzeichnis-Aufzählungsreihenfolgen und nachvollziehbare Diagnosen.
+- **Kompatibilitätstests:** kleine Fixtures pro Feature plus End-to-End-Vergleich von Build-Artefakten.
+
+## Festlegungen und offene Punkte
+
+- Erstes Referenzprojekt: `testdata/fixtures/minimal-modern/`; erster Modus: Development.
+- Reale Projekte liegen unter `testdata/ext-build/`; `default` verwendet aktuell Ext JS 8.0.0.43 und dient als erstes größeres Zielprojekt.
+- Compilerlogik und JavaScript-Metadatenscanner werden in Go implementiert; das Go-Modul hat bisher keine externen Abhängigkeiten.
+- Unterstützte Zielbetriebssysteme und der vollständige Kompatibilitätsumfang müssen noch festgelegt werden.
+
+## Definition eines abgeschlossenen Schritts
+
+Ein Schritt gilt als abgeschlossen, wenn seine Dokumentation Verhalten und Grenzen festhält, ein passendes Fixture oder einen begründeten Test enthält und die zugehörigen Prüfungen erfolgreich laufen. Bekannte Abweichungen von Sencha Cmd werden nicht stillschweigend als Kompatibilität behandelt.

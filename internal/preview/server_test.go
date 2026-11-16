@@ -1,0 +1,196 @@
+package preview
+
+import (
+	"context"
+	"io"
+	"net/http"
+	"net/http/httptest"
+	"os"
+	"path/filepath"
+	"strings"
+	"sync/atomic"
+	"testing"
+	"time"
+
+	"extjs-compiler/internal/compiler"
+)
+
+func TestPreviewServesShellFrameworkThemeAndBundle(t *testing.T) {
+	root := t.TempDir()
+	files := map[string]string{
+		"app.json":                       `{"name":"PreviewApp","namespace":"PreviewApp","toolkit":"modern","theme":"theme-material","classpath":["app"],"js":[{"path":"app.js","bundle":true}]}`,
+		"workspace.json":                 `{"frameworks":{"ext":{"path":"sdk","version":"8.0.0.43"}}}`,
+		"sdk/package.json":               `{"name":"ext","version":"8.0.0.43","compatVersion":"8.0.0"}`,
+		"sdk/packages/core/package.json": `{"version":"8.0.0.43","sencha":{"name":"core","classpath":"${package.dir}/src"}}`,
+		"sdk/packages/core/src/mixin/Factoryable.js":                       `Ext.define('Ext.mixin.Factoryable', {});`,
+		"sdk/modern/modern/package.json":                                   `{"version":"8.0.0.43","sencha":{"name":"modern","requires":["core"],"classpath":"${package.dir}/src"}}`,
+		"sdk/modern/modern/src/scroll/Scroller.js":                         `Ext.define('Ext.scroll.Scroller', { mixins: ['Ext.mixin.Factoryable'] });`,
+		"sdk/build/ext-modern-all-debug.js":                                "window.Ext = window.Ext || {};",
+		"sdk/build/modern/theme-material/resources/theme-material-all.css": "body { color: black; }",
+		"app.js":      `Ext.application({name: 'PreviewApp', extend: 'PreviewApp.Main'});`,
+		"app/Main.js": `Ext.define('PreviewApp.Main', { extend: 'Ext.Panel', requires: ['Ext.scroll.Scroller'] });`,
+	}
+	for name, content := range files {
+		path := filepath.Join(root, name)
+		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	result, err := compiler.BuildWithToolkit(root, "build-go", "modern")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !contains(result.FrameworkClasses, "Ext.scroll.Scroller") {
+		t.Fatalf("framework preload classes = %#v, want Ext.scroll.Scroller", result.FrameworkClasses)
+	}
+	if _, exists := result.FrameworkFiles["Ext.scroll.Scroller"]; !exists {
+		t.Fatal("framework source map is missing Ext.scroll.Scroller")
+	}
+	state, err := makePreviewState(result)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var current atomic.Pointer[previewState]
+	current.Store(state)
+	server := httptest.NewServer(newHandler(root, &current))
+	defer server.Close()
+
+	checks := []struct {
+		path    string
+		content string
+	}{
+		{path: "/", content: "/sdk/ext.js"},
+		{path: "/", content: "/sdk/theme/theme-material-all.css"},
+		{path: "/", content: "/app.js"},
+		{path: "/", content: "Ext.scroll.Scroller"},
+		{path: "/app.js", content: "PreviewApp.Main"},
+		{path: "/sdk/ext.js", content: "window.Ext"},
+		{path: "/", content: "Ext.scroll.Scroller"},
+		{path: "/sdk/classes/mixin/Factoryable.js", content: "Ext.mixin.Factoryable"},
+		{path: "/sdk/classes/scroll/Scroller.js", content: "Ext.scroll.Scroller"},
+		{path: "/sdk/theme/theme-material-all.css", content: "color: black"},
+		{path: "/__build", content: state.buildID},
+	}
+	for _, check := range checks {
+		response, err := http.Get(server.URL + check.path)
+		if err != nil {
+			t.Fatalf("GET %s: %v", check.path, err)
+		}
+		body, readErr := io.ReadAll(response.Body)
+		response.Body.Close()
+		if readErr != nil {
+			t.Fatalf("read %s: %v", check.path, readErr)
+		}
+		if response.StatusCode != http.StatusOK {
+			t.Errorf("GET %s status = %d, want 200", check.path, response.StatusCode)
+		}
+		if !strings.Contains(string(body), check.content) {
+			t.Errorf("GET %s body does not contain %q", check.path, check.content)
+		}
+	}
+}
+
+func contains(values []string, target string) bool {
+	for _, value := range values {
+		if value == target {
+			return true
+		}
+	}
+	return false
+}
+
+func TestPreviewFallsBackToSenchaGeneratedThemeCSS(t *testing.T) {
+	root := t.TempDir()
+	sdkRoot := filepath.Join(root, "ext")
+	frameworkJS := filepath.Join(sdkRoot, "build", "ext-all-debug.js")
+	generatedResources := filepath.Join(root, "build", "development", "SampleForm", "resources")
+	generatedCSS := filepath.Join(generatedResources, "SampleForm-all.css")
+	for path, content := range map[string]string{
+		frameworkJS:  "window.Ext = window.Ext || {};",
+		generatedCSS: "body { color: blue; }",
+	} {
+		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	state, err := makePreviewState(compiler.BuildResult{
+		AppName:              "SampleForm",
+		AppDir:               root,
+		FrameworkSDKPath:     sdkRoot,
+		FrameworkRuntimePath: frameworkJS,
+		Toolkit:              "classic",
+		Theme:                "theme-triton",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if state.themeResources != generatedResources || state.themeCSS != generatedCSS || state.themeCSSName != "SampleForm-all.css" {
+		t.Fatalf("preview theme fallback = %#v", state)
+	}
+}
+
+func TestWatcherRebuildsAfterSourceChanges(t *testing.T) {
+	root := t.TempDir()
+	files := map[string]string{
+		"app.json":                          `{"name":"PreviewApp","namespace":"PreviewApp","toolkit":"modern","theme":"theme-material","classpath":["app"],"js":[{"path":"app.js","bundle":true}]}`,
+		"workspace.json":                    `{"frameworks":{"ext":{"path":"sdk","version":"8.0.0.43"}}}`,
+		"sdk/package.json":                  `{"name":"ext","version":"8.0.0.43","compatVersion":"8.0.0"}`,
+		"sdk/packages/core/package.json":    `{"version":"8.0.0.43","sencha":{"name":"core","classpath":"${package.dir}/src"}}`,
+		"sdk/modern/modern/package.json":    `{"version":"8.0.0.43","sencha":{"name":"modern","requires":["core"],"classpath":"${package.dir}/src"}}`,
+		"sdk/build/ext-modern-all-debug.js": "window.Ext = window.Ext || {};",
+		"sdk/build/modern/theme-material/resources/theme-material-all.css": "body {}",
+		"app.js":      `Ext.application({name: 'PreviewApp', extend: 'PreviewApp.Main'});`,
+		"app/Main.js": `Ext.define('PreviewApp.Main', { extend: 'Ext.Panel', title: 'before' });`,
+	}
+	for name, content := range files {
+		path := filepath.Join(root, name)
+		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	result, err := compiler.BuildWithToolkit(root, "build-go", "modern")
+	if err != nil {
+		t.Fatal(err)
+	}
+	initial, err := os.ReadFile(result.OutputPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	var current atomic.Pointer[previewState]
+	current.Store(&previewState{result: result})
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		watch(ctx, Config{AppDir: root, OutDir: "build-go", Toolkit: "modern", Interval: 20 * time.Millisecond}, &current)
+	}()
+	time.Sleep(40 * time.Millisecond)
+	mainPath := filepath.Join(root, "app", "Main.js")
+	if err := os.WriteFile(mainPath, []byte(`Ext.define('PreviewApp.Main', { extend: 'Ext.Panel', title: 'after' });`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	deadline := time.Now().Add(2 * time.Second)
+	for time.Now().Before(deadline) {
+		updated, err := os.ReadFile(result.OutputPath)
+		if err == nil && strings.Contains(string(updated), "title: 'after'") {
+			cancel()
+			<-done
+			return
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+	updated, _ := os.ReadFile(result.OutputPath)
+	t.Fatalf("watcher did not rebuild bundle; before=%q after=%q", initial, updated)
+}

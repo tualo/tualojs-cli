@@ -1,0 +1,13 @@
+.DS_Store
+/.sencha/
+
+# Local Ext JS SDK (kept out of source control).
+/testdata/ext-8.0.0/
+/testdata/*
+
+# Sencha Cmd generated build artifacts.
+/testdata/fixtures/*/build/
+/testdata/fixtures/*/build-go/
+/testdata/fixtures/*/bootstrap.*
+/testdata/fixtures/*/sencha-error-*.log
+/testdata/fixtures/*/.sencha/

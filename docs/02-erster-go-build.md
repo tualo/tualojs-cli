@@ -1,0 +1,44 @@
+# Schritt 2: Erster Go-Build
+
+## Ziel
+
+Ein erster vertikaler Schnitt liest das Modern-Toolkit-Fixture und erzeugt ohne Sencha Cmd ein deterministisches JavaScript-Bundle. Sencha Cmd bleibt für die Referenz-Builds zuständig, wird aber nicht zur Laufzeit des Go-Compilers aufgerufen.
+
+## Aufruf
+
+Vom Repository-Wurzelverzeichnis:
+
+```sh
+go run ./cmd/extjsc build \
+  -app testdata/fixtures/minimal-modern \
+  -out build-go
+```
+
+Das Ergebnis liegt unter `testdata/fixtures/minimal-modern/build-go/app.js`. Relative Eingabe- und Ausgabepfade beziehen sich auf das jeweilige App-Verzeichnis. Die Ausgabe bricht ab, wenn sie eine Quell-JavaScript-Datei überschreiben würde.
+
+## Implementiertes Verhalten
+
+- Liest App-Name, Namespace, Classpath und JavaScript-Einträge aus `app.json`.
+- Liest `workspace.json`, validiert das Ext-JS-SDK gegen das feste Kompatibilitätsziel 8.0.0 und löst Paketnamen sowie `alternateName`-Aliase auf.
+- Folgt transitiven `app.json.requires`-/Package-`sencha.requires`-Abhängigkeiten und nimmt deren Classpath- und Override-Dateien in die Klassenauflösung auf.
+- Ersetzt `${toolkit.name}` in Classpath- und Override-Pfaden; universelle Apps wählen das Toolkit mit `-toolkit classic|modern`.
+- Verlangt genau einen JavaScript-Einstieg mit `bundle: true`.
+- Sucht `.js`-Dateien in den Classpath-Verzeichnissen und erkennt `Ext.define`-Deklarationen sowohl mit Objekt- als auch mit Factory-Funktions-Konfiguration sowie `Ext.application`.
+- Ermittelt `extend`, `requires`, `mainView`, `mixins` und `xclass` aus statischen Konfigurationsobjekten sowie statische Klassennamen in `Ext.create`, `Ext.require` und `Ext.syncRequire`.
+- Verknüpft Override-Klassen aus den in `app.json` angegebenen `overrides`-Pfaden mit ihrem Ziel; Overrides werden direkt nach einem tatsächlich geladenen Ziel ausgegeben.
+- Löst Klassen-Aliase aus `alias` und `xtype` anhand von `xtype`-Konfigurationen und `Ext.widget()`-Aufrufen auf.
+- Löst `Namespace.*` und `Ext.*` gegen die App- und ausgewählten SDK-Classpaths auf. App-/Package-Klassen kommen ins Bundle; Framework-Klassen werden als Preview-Preloads ausgewiesen.
+- Beachtet die Reihenfolge der Classpath-Pfade. Bei doppelten Klassendefinitionen gewinnt ein eindeutiger kanonischer Dateiname, ansonsten die frühere Classpath-Quelle; uneindeutige Fälle sind Fehler.
+- Ordnet referenzierte App-Klassen deterministisch in Abhängigkeitsreihenfolge. Zyklen und nicht eindeutig auflösbare doppelte Klassennamen sind Fehler; fehlende App-Klassen werden als Warnungen ausgegeben, da Projekte Klassen über dynamische Loader-Pfade nachladen können.
+- Schreibt die ausgewählten unveränderten Quelldateien mit Herkunftskommentaren in ein Bundle.
+- Nutzt ausschließlich die Go-Standardbibliothek.
+
+## Grenzen dieses Schritts
+
+Der Metadatenscanner ist kein vollständiger ECMAScript-Parser. Er behandelt insbesondere keine dynamisch berechneten Anforderungen und keine beliebigen JavaScript-Ausdrücke. Das Bundle enthält referenzierte App- und Package-Klassen sowie den Einstieg; Framework-Runtime, Package-Ressourcen, Assets, Sass, ES-Transformationen, Minifizierung, Source Maps und Sencha-Microloader-Artefakte sind noch nicht implementiert. Das Ergebnis ist deshalb ein erster Compiler-Schnitt und noch kein vollständiger Ersatz für `sencha app build`.
+
+## Prüfungen
+
+- `go test ./...` testet Metadaten-Erkennung, Klassenreihenfolge, Zyklenerkennung, Pfadschutz und Ausgabe.
+- Der CLI-Aufruf oben wurde gegen `testdata/fixtures/minimal-modern/` ausgeführt und erzeugt acht Quelldateien im Bundle: Greeting, Created, WidgetOnly, Main, Main-Override, Application, Required und `app.js`.
+- Der gleiche Fixture-Build mit Sencha Cmd 8.0.0.48 wurde erfolgreich ausgeführt; dessen `bootstrap.json` führt die App-Klassen und den Override ebenfalls auf.
