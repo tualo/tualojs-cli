@@ -1,6 +1,7 @@
 package compiler
 
 import (
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -363,6 +364,51 @@ func TestBuildCopiesConfiguredResources(t *testing.T) {
 		if string(content) != expected {
 			t.Errorf("resource %s = %q, want %q", relative, content, expected)
 		}
+	}
+}
+
+func TestBuildWritesLineLevelSourceMap(t *testing.T) {
+	root := makeFixture(t, map[string]string{
+		"app.json": `{"name":"Example","namespace":"Example","classpath":["app"],"js":[{"path":"app.js","bundle":true}]}`,
+		"app.js":   `Ext.application({name: 'Example', extend: 'Example.Entry'});`,
+		"app/Entry.js": `Ext.define('Example.Entry', {
+    extend: 'Ext.Component',
+    value: 'source mapped'
+});`,
+	})
+	result, err := BuildWithSourceMap(root, "out", "", false, BuildModeDevelopment, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.SourceMapPath != result.OutputPath+".map" {
+		t.Fatalf("source map path = %q, want %q", result.SourceMapPath, result.OutputPath+".map")
+	}
+	bundle, err := os.ReadFile(result.OutputPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(bundle), "//# sourceMappingURL=app.js.map") {
+		t.Fatalf("bundle is missing sourceMappingURL: %s", bundle)
+	}
+	mapData, err := os.ReadFile(result.SourceMapPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var sourceMap struct {
+		Version        int      `json:"version"`
+		File           string   `json:"file"`
+		Sources        []string `json:"sources"`
+		SourcesContent []string `json:"sourcesContent"`
+		Mappings       string   `json:"mappings"`
+	}
+	if err := json.Unmarshal(mapData, &sourceMap); err != nil {
+		t.Fatal(err)
+	}
+	if sourceMap.Version != 3 || sourceMap.File != "app.js" || len(sourceMap.Sources) != 2 || len(sourceMap.SourcesContent) != 2 || sourceMap.Mappings == "" {
+		t.Fatalf("unexpected source map: %#v", sourceMap)
+	}
+	if !strings.Contains(strings.Join(sourceMap.SourcesContent, "\n"), "source mapped") {
+		t.Fatalf("sourcesContent did not retain source text: %#v", sourceMap.SourcesContent)
 	}
 }
 

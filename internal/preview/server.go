@@ -24,6 +24,7 @@ type Config struct {
 	Toolkit           string
 	NormalizeLetConst bool
 	Mode              string
+	SourceMap         bool
 	Address           string
 	Interval          time.Duration
 }
@@ -51,7 +52,7 @@ func Run(ctx context.Context, config Config) error {
 		config.Mode = compiler.BuildModeDevelopment
 	}
 
-	result, err := compiler.BuildWithMode(config.AppDir, config.OutDir, config.Toolkit, config.NormalizeLetConst, config.Mode)
+	result, err := compiler.BuildWithSourceMap(config.AppDir, config.OutDir, config.Toolkit, config.NormalizeLetConst, config.Mode, config.SourceMap)
 	if err != nil {
 		return err
 	}
@@ -101,6 +102,30 @@ func newHandler(appDir string, current *atomic.Pointer[previewState]) http.Handl
 	mux.HandleFunc("/app.js", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Cache-Control", "no-store")
 		http.ServeFile(w, r, current.Load().result.OutputPath)
+	})
+	mux.HandleFunc("/app.js.map", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Cache-Control", "no-store")
+		path := current.Load().result.SourceMapPath
+		if path == "" {
+			http.NotFound(w, r)
+			return
+		}
+		http.ServeFile(w, r, path)
+	})
+	mux.HandleFunc("/sources/", func(w http.ResponseWriter, r *http.Request) {
+		state := current.Load()
+		name := strings.TrimPrefix(r.URL.Path, "/sources/")
+		if name == "" || strings.Contains(name, "..") {
+			http.NotFound(w, r)
+			return
+		}
+		file, exists := state.result.SourceFiles[name]
+		if !exists {
+			http.NotFound(w, r)
+			return
+		}
+		w.Header().Set("Cache-Control", "no-store")
+		http.ServeFile(w, r, file)
 	})
 	mux.HandleFunc("/resources/", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Cache-Control", "no-store")
@@ -267,7 +292,7 @@ func watch(ctx context.Context, config Config, current *atomic.Pointer[previewSt
 			if snapshotsEqual(snapshot, fileSnapshot(state.result.WatchPaths, filepath.Dir(state.result.OutputPath))) {
 				continue
 			}
-			result, err := compiler.BuildWithMode(config.AppDir, config.OutDir, config.Toolkit, config.NormalizeLetConst, config.Mode)
+			result, err := compiler.BuildWithSourceMap(config.AppDir, config.OutDir, config.Toolkit, config.NormalizeLetConst, config.Mode, config.SourceMap)
 			if err != nil {
 				log.Printf("rebuild failed: %v", err)
 				snapshot = fileSnapshot(state.result.WatchPaths, filepath.Dir(state.result.OutputPath))

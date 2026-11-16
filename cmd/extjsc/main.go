@@ -45,6 +45,7 @@ func runBuild(args []string) error {
 	toolkit := flags.String("toolkit", "", "toolkit for universal apps (classic or modern)")
 	normalizeLetConst := flags.Bool("normalize-let-const", false, "lower direct function-scope let/const declarations to var")
 	mode := flags.String("mode", compiler.BuildModeDevelopment, "build mode (development or production)")
+	sourceMap := flags.Bool("source-map", false, "write an app.js.map source map")
 	if err := flags.Parse(args); err != nil {
 		if errors.Is(err, flag.ErrHelp) {
 			return nil
@@ -55,7 +56,7 @@ func runBuild(args []string) error {
 		return fmt.Errorf("unexpected arguments: %v", flags.Args())
 	}
 
-	result, err := compiler.BuildWithMode(*appDir, *outDir, *toolkit, *normalizeLetConst, *mode)
+	result, err := compiler.BuildWithSourceMap(*appDir, *outDir, *toolkit, *normalizeLetConst, *mode, *sourceMap)
 	if err != nil {
 		return err
 	}
@@ -82,6 +83,7 @@ func runWatch(args []string) error {
 	toolkit := flags.String("toolkit", "", "toolkit for universal apps (classic or modern)")
 	normalizeLetConst := flags.Bool("normalize-let-const", false, "lower direct function-scope let/const declarations to var")
 	mode := flags.String("mode", compiler.BuildModeDevelopment, "build mode (development or production)")
+	sourceMap := flags.Bool("source-map", false, "write an app.js.map source map")
 	address := flags.String("addr", "127.0.0.1:1841", "local HTTP listen address")
 	interval := flags.Duration("interval", 500*time.Millisecond, "poll interval for source changes")
 	if err := flags.Parse(args); err != nil {
@@ -101,6 +103,7 @@ func runWatch(args []string) error {
 		Toolkit:           *toolkit,
 		NormalizeLetConst: *normalizeLetConst,
 		Mode:              *mode,
+		SourceMap:         *sourceMap,
 		Address:           *address,
 		Interval:          *interval,
 	})
@@ -108,6 +111,6 @@ func runWatch(args []string) error {
 
 func printUsage(w *os.File) {
 	fmt.Fprintln(w, "Usage:")
-	fmt.Fprintln(w, "  extjsc build [-app <directory>] [-out <directory>] [-toolkit classic|modern] [-mode development|production] [-normalize-let-const]")
-	fmt.Fprintln(w, "  extjsc watch [-app <directory>] [-out <directory>] [-toolkit classic|modern] [-mode development|production] [-normalize-let-const] [-addr 127.0.0.1:1841]")
+	fmt.Fprintln(w, "  extjsc build [-app <directory>] [-out <directory>] [-toolkit classic|modern] [-mode development|production] [-normalize-let-const] [-source-map]")
+	fmt.Fprintln(w, "  extjsc watch [-app <directory>] [-out <directory>] [-toolkit classic|modern] [-mode development|production] [-normalize-let-const] [-source-map] [-addr 127.0.0.1:1841]")
 }

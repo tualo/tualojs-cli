@@ -41,7 +41,7 @@ func TestPreviewServesShellFrameworkThemeAndBundle(t *testing.T) {
 		}
 	}
 
-	result, err := compiler.BuildWithToolkit(root, "build-go", "modern")
+	result, err := compiler.BuildWithSourceMap(root, "build-go", "modern", false, compiler.BuildModeDevelopment, true)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -69,6 +69,9 @@ func TestPreviewServesShellFrameworkThemeAndBundle(t *testing.T) {
 		{path: "/", content: "/app.js"},
 		{path: "/", content: "Ext.scroll.Scroller"},
 		{path: "/app.js", content: "PreviewApp.Main"},
+		{path: "/app.js", content: "sourceMappingURL=app.js.map"},
+		{path: "/app.js.map", content: `"version":3`},
+		{path: "/sources/app/Main.js", content: "PreviewApp.Main"},
 		{path: "/resources/shared/logo.txt", content: "preview logo"},
 		{path: "/sdk/ext.js", content: "window.Ext"},
 		{path: "/", content: "Ext.scroll.Scroller"},

@@ -11,7 +11,8 @@ Vom Repository-Wurzelverzeichnis:
 ```sh
 go run ./cmd/extjsc build \
   -app testdata/fixtures/minimal-modern \
-  -out build-go
+  -out build-go \
+  -source-map
 ```
 
 Das Ergebnis liegt unter `testdata/fixtures/minimal-modern/build-go/app.js`. Relative Eingabe- und Ausgabepfade beziehen sich auf das jeweilige App-Verzeichnis. Die Ausgabe bricht ab, wenn sie eine Quell-JavaScript-Datei überschreiben würde.
@@ -34,11 +35,12 @@ Das Ergebnis liegt unter `testdata/fixtures/minimal-modern/build-go/app.js`. Rel
 - Beachtet die Reihenfolge der Classpath-Pfade. Bei doppelten Klassendefinitionen gewinnt ein eindeutiger kanonischer Dateiname, ansonsten die frühere Classpath-Quelle; uneindeutige Fälle sind Fehler.
 - Ordnet referenzierte App-Klassen deterministisch in Abhängigkeitsreihenfolge. Zyklen und nicht eindeutig auflösbare doppelte Klassennamen sind Fehler; fehlende App-Klassen werden als Warnungen ausgegeben, da Projekte Klassen über dynamische Loader-Pfade nachladen können.
 - Schreibt die ausgewählten Quelldateien mit Herkunftskommentaren in ein Bundle; neben der dokumentierten Normalisierung bleiben Quellen weitgehend unverändert.
+- `-source-map` erzeugt `app.js.map` mit zeilenbasierten Zuordnungen und `sourcesContent`.
 - Nutzt ausschließlich die Go-Standardbibliothek.
 
 ## Grenzen dieses Schritts
 
-Der Metadatenscanner ist kein vollständiger ECMAScript-Parser. Er behandelt insbesondere keine dynamisch berechneten Anforderungen und keine beliebigen JavaScript-Ausdrücke. Die aktuelle ES-Transformation lässt `let` in Block-Scope und `for`-Köpfen unverändert, damit deren Semantik nicht durch blindes Ersetzen verloren geht. Das Bundle enthält referenzierte App- und Package-Klassen sowie den Einstieg; Framework-Runtime im Bundle, Package-Ressourcen, CSS/Sass-Kompilierung, allgemeine ES-Transformationen, Minifizierung, Source Maps und Sencha-Microloader-Artefakte sind noch nicht implementiert. Das Ergebnis ist deshalb ein erster Compiler-Schnitt und noch kein vollständiger Ersatz für `sencha app build`.
+Der Metadatenscanner ist kein vollständiger ECMAScript-Parser. Er behandelt insbesondere keine dynamisch berechneten Anforderungen und keine beliebigen JavaScript-Ausdrücke. Die aktuelle ES-Transformation lässt `let` in Block-Scope und `for`-Köpfen unverändert, damit deren Semantik nicht durch blindes Ersetzen verloren geht. Das Bundle enthält referenzierte App- und Package-Klassen sowie den Einstieg; Framework-Runtime im Bundle, Package-Ressourcen, CSS/Sass-Kompilierung, allgemeine ES-Transformationen, Minifizierung und Sencha-Microloader-Artefakte sind noch nicht implementiert. Source Maps sind zeilenbasiert und nicht spalten- oder transformationsgenau. Das Ergebnis ist deshalb ein erster Compiler-Schnitt und noch kein vollständiger Ersatz für `sencha app build`.
 
 ## Prüfungen
 

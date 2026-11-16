@@ -32,16 +32,19 @@ type BuildResult struct {
 	ResourceFiles        int
 	FrameworkClasses     []string
 	FrameworkFiles       map[string]string
+	SourceFiles          map[string]string
 	Mode                 string
+	SourceMapPath        string
 }
 
 type sourceFile struct {
-	path      string
-	name      string
-	data      []byte
-	priority  int
-	framework bool
-	class     []classDeclaration
+	path         string
+	name         string
+	data         []byte
+	originalData []byte
+	priority     int
+	framework    bool
+	class        []classDeclaration
 }
 
 type overrideDeclaration struct {
@@ -67,6 +70,10 @@ func BuildWithOptions(appDir, outputDir, selectedToolkit string, normalizeLetCon
 }
 
 func BuildWithMode(appDir, outputDir, selectedToolkit string, normalizeLetConst bool, mode string) (BuildResult, error) {
+	return BuildWithSourceMap(appDir, outputDir, selectedToolkit, normalizeLetConst, mode, false)
+}
+
+func BuildWithSourceMap(appDir, outputDir, selectedToolkit string, normalizeLetConst bool, mode string, includeSourceMap bool) (BuildResult, error) {
 	if mode == "" {
 		mode = BuildModeDevelopment
 	}
@@ -133,15 +140,15 @@ func BuildWithMode(appDir, outputDir, selectedToolkit string, normalizeLetConst 
 	if err != nil {
 		return BuildResult{}, fmt.Errorf("JavaScript entry: %w", err)
 	}
-	entryData, err := os.ReadFile(entryPath)
+	entryOriginalData, err := os.ReadFile(entryPath)
 	if err != nil {
 		return BuildResult{}, fmt.Errorf("read JavaScript entry %s: %w", entryPath, err)
 	}
-	entrySource, err := preprocessSencha(string(entryData), mode)
+	entrySource, err := preprocessSencha(string(entryOriginalData), mode)
 	if err != nil {
 		return BuildResult{}, fmt.Errorf("preprocess JavaScript entry %s: %w", entryPath, err)
 	}
-	entryData = []byte(entrySource)
+	entryData := []byte(entrySource)
 	_, appDependencies, sourceDependencies, err := parseExtMetadata(string(entryData))
 	if err != nil {
 		return BuildResult{}, fmt.Errorf("parse JavaScript entry %s: %w", entryPath, err)
@@ -184,23 +191,11 @@ func BuildWithMode(appDir, outputDir, selectedToolkit string, normalizeLetConst 
 		return BuildResult{}, err
 	}
 	entryName, _ := filepath.Rel(root, entryPath)
-	entry := sourceFile{path: entryPath, name: filepath.ToSlash(entryName), data: entryData}
+	entry := sourceFile{path: entryPath, name: filepath.ToSlash(entryName), data: entryData, originalData: entryOriginalData}
 	ordered = append(ordered, entry)
-
-	var bundle strings.Builder
+	sourceFiles := make(map[string]string, len(ordered))
 	for _, source := range ordered {
-		content := string(source.data)
-		if normalizeLetConst {
-			content, err = transformJavaScript(content)
-			if err != nil {
-				return BuildResult{}, fmt.Errorf("transform source %s: %w", source.name, err)
-			}
-		}
-		fmt.Fprintf(&bundle, "\n// Source: %s\n", source.name)
-		bundle.WriteString(content)
-		if len(content) == 0 || content[len(content)-1] != '\n' {
-			bundle.WriteByte('\n')
-		}
+		sourceFiles[source.name] = source.path
 	}
 
 	outputRoot := outputDir
@@ -213,6 +208,10 @@ func BuildWithMode(appDir, outputDir, selectedToolkit string, normalizeLetConst 
 	}
 	if err := os.MkdirAll(outputRoot, 0o755); err != nil {
 		return BuildResult{}, fmt.Errorf("create output directory: %w", err)
+	}
+	bundle, sourceMapData, err := assembleBundle(ordered, normalizeLetConst, includeSourceMap)
+	if err != nil {
+		return BuildResult{}, err
 	}
 	outputPath := filepath.Join(outputRoot, "app.js")
 	if outputPath == entryPath {
@@ -227,8 +226,15 @@ func BuildWithMode(appDir, outputDir, selectedToolkit string, normalizeLetConst 
 	if err != nil {
 		return BuildResult{}, err
 	}
-	if err := writeFileAtomic(outputPath, []byte(bundle.String())); err != nil {
+	if err := writeFileAtomic(outputPath, bundle); err != nil {
 		return BuildResult{}, fmt.Errorf("write bundle %s: %w", outputPath, err)
+	}
+	sourceMapPath := ""
+	if includeSourceMap {
+		sourceMapPath = outputPath + ".map"
+		if err := writeFileAtomic(sourceMapPath, sourceMapData); err != nil {
+			return BuildResult{}, fmt.Errorf("write source map %s: %w", sourceMapPath, err)
+		}
 	}
 	return BuildResult{
 		AppName:              config.Name,
@@ -247,7 +253,9 @@ func BuildWithMode(appDir, outputDir, selectedToolkit string, normalizeLetConst 
 		ResourceFiles:        resourceFiles,
 		FrameworkClasses:     frameworkClasses,
 		FrameworkFiles:       frameworkFiles,
+		SourceFiles:          sourceFiles,
 		Mode:                 mode,
+		SourceMapPath:        sourceMapPath,
 	}, nil
 }
 
@@ -469,6 +477,7 @@ func appendSource(root, path, prefix string, priority int, framework bool, mode 
 	if err != nil {
 		return fmt.Errorf("read source %s: %w", path, err)
 	}
+	originalData := append([]byte(nil), data...)
 	processed, err := preprocessSencha(string(data), mode)
 	if err != nil {
 		return fmt.Errorf("preprocess source %s: %w", path, err)
@@ -485,7 +494,7 @@ func appendSource(root, path, prefix string, priority int, framework bool, mode 
 	if err != nil {
 		return err
 	}
-	*sources = append(*sources, sourceFile{path: path, name: prefix + filepath.ToSlash(relative), data: data, priority: priority, framework: framework, class: declarations})
+	*sources = append(*sources, sourceFile{path: path, name: prefix + filepath.ToSlash(relative), data: data, originalData: originalData, priority: priority, framework: framework, class: declarations})
 	return nil
 }
 
