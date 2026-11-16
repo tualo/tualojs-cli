@@ -22,18 +22,14 @@ func transformJavaScript(source string) (string, error) {
 		if !is(tokens, i, "function") {
 			continue
 		}
-		paramsOpen, paramsClose, bodyOpen, bodyClose, ok, err := functionBounds(tokens, i)
+		_, _, bodyOpen, bodyClose, ok, err := functionBounds(tokens, i)
 		if err != nil {
 			return "", err
 		}
 		if !ok {
 			continue
 		}
-		parameters := functionParameters(tokens, paramsOpen, paramsClose)
-		if len(parameters) == 0 {
-			continue
-		}
-		edits = append(edits, shadowedLexicalDeclarations(tokens, bodyOpen, bodyClose, parameters)...)
+		edits = append(edits, functionLexicalDeclarations(tokens, bodyOpen, bodyClose)...)
 	}
 	if len(edits) == 0 {
 		return source, nil
@@ -79,57 +75,11 @@ func functionBounds(tokens []jsToken, functionIndex int) (paramsOpen, paramsClos
 	return paramsOpen, paramsClose, bodyOpen, bodyClose, true, nil
 }
 
-func functionParameters(tokens []jsToken, open, close int) map[string]bool {
-	parameters := make(map[string]bool)
-	segmentStart := open + 1
-	braces, brackets, parentheses := 0, 0, 0
-	for i := open + 1; i <= close; i++ {
-		atEnd := i == close
-		atSeparator := !atEnd && is(tokens, i, ",") && braces == 0 && brackets == 0 && parentheses == 0
-		if atEnd || atSeparator {
-			for j := segmentStart; j < i; j++ {
-				if tokens[j].kind == identifierToken {
-					parameters[tokens[j].value] = true
-					break
-				}
-				if is(tokens, j, "{") || is(tokens, j, "[") {
-					break
-				}
-			}
-			segmentStart = i + 1
-		}
-		if atEnd || tokens[i].kind != punctuationToken {
-			continue
-		}
-		switch tokens[i].value {
-		case "{":
-			braces++
-		case "}":
-			if braces > 0 {
-				braces--
-			}
-		case "[":
-			brackets++
-		case "]":
-			if brackets > 0 {
-				brackets--
-			}
-		case "(":
-			parentheses++
-		case ")":
-			if parentheses > 0 {
-				parentheses--
-			}
-		}
-	}
-	return parameters
-}
-
-func shadowedLexicalDeclarations(tokens []jsToken, bodyOpen, bodyClose int, parameters map[string]bool) []sourceEdit {
+func functionLexicalDeclarations(tokens []jsToken, bodyOpen, bodyClose int) []sourceEdit {
 	var edits []sourceEdit
 	braces, brackets, parentheses := 0, 0, 0
 	for i := bodyOpen + 1; i+1 < bodyClose; i++ {
-		if braces == 0 && brackets == 0 && parentheses == 0 && tokens[i].kind == identifierToken && (tokens[i].value == "let" || tokens[i].value == "const") && tokens[i+1].kind == identifierToken && parameters[tokens[i+1].value] {
+		if braces == 0 && brackets == 0 && parentheses == 0 && isLexicalDeclaration(tokens, i) {
 			edits = append(edits, sourceEdit{start: tokens[i].start, end: tokens[i].end, replacement: "var"})
 		}
 		if tokens[i].kind != punctuationToken {
@@ -157,4 +107,18 @@ func shadowedLexicalDeclarations(tokens []jsToken, bodyOpen, bodyClose int, para
 		}
 	}
 	return edits
+}
+
+func isLexicalDeclaration(tokens []jsToken, index int) bool {
+	if index < 0 || index+1 >= len(tokens) || tokens[index].kind != identifierToken {
+		return false
+	}
+	if tokens[index].value != "let" && tokens[index].value != "const" {
+		return false
+	}
+	if index > 0 && is(tokens, index-1, ".") {
+		return false
+	}
+	next := tokens[index+1]
+	return next.kind == identifierToken || is(tokens, index+1, "{") || is(tokens, index+1, "[")
 }

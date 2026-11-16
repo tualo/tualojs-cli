@@ -22,16 +22,16 @@ Die Realprojekt-Quellen wurden nicht verändert. Die Ausgabe wurde außerhalb de
 
 ```sh
 go run ./cmd/extjsc build --app testdata/ext-build/default/build/production/Tualo \
-  --toolkit modern --out /tmp/default-modern-go
+  --toolkit modern --out /tmp/default-modern-go --normalize-let-const
 
 go run ./cmd/extjsc build --app testdata/ext-build/default/build/production/Tualo \
-  --toolkit classic --out /tmp/default-classic-go
+  --toolkit classic --out /tmp/default-classic-go --normalize-let-const
 ```
 
 Beide Toolkit-Läufe lösen die Klassenabhängigkeiten auf und erzeugen Bundles: 409 Quelldateien für Modern und 602 für Classic. Der Go-Build meldet dynamisch geladene, nicht vorhandene Quellen als Warnungen.
 
-## Noch nicht kompatibel: JavaScript-Transformation
+## JavaScript-Transformation
 
-Die Go-Ausgabe enthält derzeit unveränderte Quelldateien. `node --check` meldet im Realprojekt einen Syntaxfehler in `both/src/system/sass_css/Routes.js`: Der Funktionsparameter `tablename` wird im selben Scope nochmals mit `let` deklariert. Auch die vorhandene Sencha-Ausgabe enthält die Klasse, transformiert den Code aber unter anderem zu neu benannten `var`-Variablen; deren vorgebaute Classic-App besteht `node --check`.
+In `both/src/system/sass_css/Routes.js` wird der Funktionsparameter `tablename` im selben Scope nochmals mit `let` deklariert. Die Go-Pipeline senkt direkte Funktions-Scope-Deklarationen von `let`/`const` zu `var`, wie es auch die vorhandene Sencha-Ausgabe tut. Der erzeugte Classic-Build besteht damit `node --check`.
 
-Damit ist JavaScript-Parsing und -Transformation der nächste notwendige Schritt, bevor ein erzeugtes Realprojekt-Bundle als ausführbar gelten kann. Ein Sencha-Cmd-Referenzbuild wurde für dieses Projekt nicht ausgeführt.
+Diese Transformation ist bewusst eng begrenzt; eine allgemeine ECMAScript-/Ext-Klassen-Transformation ist weiterhin erforderlich. Ein Sencha-Cmd-Referenzbuild wurde für dieses Projekt nicht ausgeführt.

@@ -56,6 +56,25 @@ func TestBuildOrdersApplicationDependencies(t *testing.T) {
 	}
 }
 
+func TestBuildPreservesLexicalDeclarationsByDefault(t *testing.T) {
+	root := makeFixture(t, map[string]string{
+		"app.json":     `{"name":"Example","namespace":"Example","classpath":["app"],"js":[{"path":"app.js","bundle":true}]}`,
+		"app.js":       `Ext.application({name: 'Example', extend: 'Example.Entry'});`,
+		"app/Entry.js": `Ext.define('Example.Entry', { run: function (value) { let value = 'local'; return value; } });`,
+	})
+	result, err := Build(root, "out")
+	if err != nil {
+		t.Fatal(err)
+	}
+	bundle, err := os.ReadFile(result.OutputPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(bundle), "let value = 'local'") {
+		t.Fatalf("default build unexpectedly transformed lexical declaration: %s", bundle)
+	}
+}
+
 func TestBuildRejectsDependencyCycle(t *testing.T) {
 	root := makeFixture(t, map[string]string{
 		"app.json": `{"name":"Example","namespace":"Example","classpath":["app"],"js":[{"path":"app.js","bundle":true}]}`,
@@ -100,7 +119,7 @@ func TestBuildNormalizesShadowedFunctionParameter(t *testing.T) {
     }
 });`,
 	})
-	result, err := Build(root, "out")
+	result, err := BuildWithOptions(root, "out", "", true)
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -27,15 +27,16 @@ Das Ergebnis liegt unter `testdata/fixtures/minimal-modern/build-go/app.js`. Rel
 - Ermittelt `extend`, `requires`, `mainView`, `mixins` und `xclass` aus statischen Konfigurationsobjekten sowie statische Klassennamen in `Ext.create`, `Ext.require` und `Ext.syncRequire`.
 - Verknüpft Override-Klassen aus den in `app.json` angegebenen `overrides`-Pfaden mit ihrem Ziel; Overrides werden direkt nach einem tatsächlich geladenen Ziel ausgegeben.
 - Löst Klassen-Aliase aus `alias` und `xtype` anhand von `xtype`-Konfigurationen und `Ext.widget()`-Aufrufen auf.
+- Mit `-normalize-let-const` werden `let`-/`const`-Deklarationen im direkten Funktions-Scope zu `var` normalisiert, einschließlich eines gleichnamigen Funktionsparameters. Standardmäßig bleiben sie unverändert.
 - Löst `Namespace.*` und `Ext.*` gegen die App- und ausgewählten SDK-Classpaths auf. App-/Package-Klassen kommen ins Bundle; Framework-Klassen werden als Preview-Preloads ausgewiesen.
 - Beachtet die Reihenfolge der Classpath-Pfade. Bei doppelten Klassendefinitionen gewinnt ein eindeutiger kanonischer Dateiname, ansonsten die frühere Classpath-Quelle; uneindeutige Fälle sind Fehler.
 - Ordnet referenzierte App-Klassen deterministisch in Abhängigkeitsreihenfolge. Zyklen und nicht eindeutig auflösbare doppelte Klassennamen sind Fehler; fehlende App-Klassen werden als Warnungen ausgegeben, da Projekte Klassen über dynamische Loader-Pfade nachladen können.
-- Schreibt die ausgewählten unveränderten Quelldateien mit Herkunftskommentaren in ein Bundle.
+- Schreibt die ausgewählten Quelldateien mit Herkunftskommentaren in ein Bundle; neben der dokumentierten Normalisierung bleiben Quellen weitgehend unverändert.
 - Nutzt ausschließlich die Go-Standardbibliothek.
 
 ## Grenzen dieses Schritts
 
-Der Metadatenscanner ist kein vollständiger ECMAScript-Parser. Er behandelt insbesondere keine dynamisch berechneten Anforderungen und keine beliebigen JavaScript-Ausdrücke. Das Bundle enthält referenzierte App- und Package-Klassen sowie den Einstieg; Framework-Runtime, Package-Ressourcen, Assets, Sass, ES-Transformationen, Minifizierung, Source Maps und Sencha-Microloader-Artefakte sind noch nicht implementiert. Das Ergebnis ist deshalb ein erster Compiler-Schnitt und noch kein vollständiger Ersatz für `sencha app build`.
+Der Metadatenscanner ist kein vollständiger ECMAScript-Parser. Er behandelt insbesondere keine dynamisch berechneten Anforderungen und keine beliebigen JavaScript-Ausdrücke. Die aktuelle ES-Transformation lässt `let` in Block-Scope und `for`-Köpfen unverändert, damit deren Semantik nicht durch blindes Ersetzen verloren geht. Das Bundle enthält referenzierte App- und Package-Klassen sowie den Einstieg; Framework-Runtime im Bundle, Package-Ressourcen, Assets, Sass, allgemeine ES-Transformationen, Minifizierung, Source Maps und Sencha-Microloader-Artefakte sind noch nicht implementiert. Das Ergebnis ist deshalb ein erster Compiler-Schnitt und noch kein vollständiger Ersatz für `sencha app build`.
 
 ## Prüfungen
 

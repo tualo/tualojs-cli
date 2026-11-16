@@ -43,6 +43,7 @@ func runBuild(args []string) error {
 	appDir := flags.String("app", ".", "Ext JS application directory containing app.json")
 	outDir := flags.String("out", "build-go", "output directory for the JavaScript bundle")
 	toolkit := flags.String("toolkit", "", "toolkit for universal apps (classic or modern)")
+	normalizeLetConst := flags.Bool("normalize-let-const", false, "lower direct function-scope let/const declarations to var")
 	if err := flags.Parse(args); err != nil {
 		if errors.Is(err, flag.ErrHelp) {
 			return nil
@@ -53,7 +54,7 @@ func runBuild(args []string) error {
 		return fmt.Errorf("unexpected arguments: %v", flags.Args())
 	}
 
-	result, err := compiler.BuildWithToolkit(*appDir, *outDir, *toolkit)
+	result, err := compiler.BuildWithOptions(*appDir, *outDir, *toolkit, *normalizeLetConst)
 	if err != nil {
 		return err
 	}
@@ -78,6 +79,7 @@ func runWatch(args []string) error {
 	appDir := flags.String("app", ".", "Ext JS application directory containing app.json")
 	outDir := flags.String("out", "build-go", "output directory for the JavaScript bundle")
 	toolkit := flags.String("toolkit", "", "toolkit for universal apps (classic or modern)")
+	normalizeLetConst := flags.Bool("normalize-let-const", false, "lower direct function-scope let/const declarations to var")
 	address := flags.String("addr", "127.0.0.1:1841", "local HTTP listen address")
 	interval := flags.Duration("interval", 500*time.Millisecond, "poll interval for source changes")
 	if err := flags.Parse(args); err != nil {
@@ -92,16 +94,17 @@ func runWatch(args []string) error {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 	return preview.Run(ctx, preview.Config{
-		AppDir:   *appDir,
-		OutDir:   *outDir,
-		Toolkit:  *toolkit,
-		Address:  *address,
-		Interval: *interval,
+		AppDir:            *appDir,
+		OutDir:            *outDir,
+		Toolkit:           *toolkit,
+		NormalizeLetConst: *normalizeLetConst,
+		Address:           *address,
+		Interval:          *interval,
 	})
 }
 
 func printUsage(w *os.File) {
 	fmt.Fprintln(w, "Usage:")
-	fmt.Fprintln(w, "  extjsc build [-app <directory>] [-out <directory>] [-toolkit classic|modern]")
-	fmt.Fprintln(w, "  extjsc watch [-app <directory>] [-out <directory>] [-toolkit classic|modern] [-addr 127.0.0.1:1841]")
+	fmt.Fprintln(w, "  extjsc build [-app <directory>] [-out <directory>] [-toolkit classic|modern] [-normalize-let-const]")
+	fmt.Fprintln(w, "  extjsc watch [-app <directory>] [-out <directory>] [-toolkit classic|modern] [-normalize-let-const] [-addr 127.0.0.1:1841]")
 }

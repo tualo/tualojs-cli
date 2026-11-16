@@ -23,7 +23,7 @@ Die Implementierung startet mit einem kleinen, durch Tests abgesicherten vertika
 5. **Xtype- und Alias-Auflösung** (`docs/05-xtype-aufloesung.md`): Klassen aus `alias`, `xtype`-Konfiguration und `Ext.widget()` statisch finden.
 6. **Projektmodell erweitern** (`docs/06-projektmodell.md`): `workspace.json`, Ext-SDK-Version und transitive Package-Classpaths.
 7. **Watch-Preview-Server** (`docs/07-watch-preview.md`): Go-Build lokal ausliefern, Quellen beobachten und Browser bei erfolgreichem Neubau aktualisieren.
-8. **JavaScript-Parsing erweitern** (`docs/08-javascript-parser.md`): Lexer/Parser schrittweise auf die in echten Ext-JS-Projekten beobachteten Sprachkonstrukte ausbauen.
+8. **JavaScript-Parsing erweitern** (`docs/08-javascript-parser.md`): Lexer/Parser und eng begrenzte Sencha-kompatible Quelltransformationen ausbauen.
 9. **Abhängigkeitssemantik** (`docs/09-abhaengigkeiten.md`): dynamische Anforderungen und Framework-Klassen ergänzen.
 10. **Sencha-spezifische Transformationen** (`docs/10-transformationen.md`): Präprozessoren, Makros und Framework-Konventionen implementieren.
 11. **Assets und Build-Ausgabe** (`docs/11-assets-und-ausgabe.md`): statische Ressourcen kopieren und vollständige, wiederholbare Build-Strukturen erzeugen.

@@ -19,11 +19,12 @@ import (
 )
 
 type Config struct {
-	AppDir   string
-	OutDir   string
-	Toolkit  string
-	Address  string
-	Interval time.Duration
+	AppDir            string
+	OutDir            string
+	Toolkit           string
+	NormalizeLetConst bool
+	Address           string
+	Interval          time.Duration
 }
 
 type previewState struct {
@@ -46,7 +47,7 @@ func Run(ctx context.Context, config Config) error {
 		config.OutDir = "build-go"
 	}
 
-	result, err := compiler.BuildWithToolkit(config.AppDir, config.OutDir, config.Toolkit)
+	result, err := compiler.BuildWithOptions(config.AppDir, config.OutDir, config.Toolkit, config.NormalizeLetConst)
 	if err != nil {
 		return err
 	}
@@ -253,7 +254,7 @@ func watch(ctx context.Context, config Config, current *atomic.Pointer[previewSt
 			if snapshotsEqual(snapshot, fileSnapshot(state.result.WatchPaths, filepath.Dir(state.result.OutputPath))) {
 				continue
 			}
-			result, err := compiler.BuildWithToolkit(config.AppDir, config.OutDir, config.Toolkit)
+			result, err := compiler.BuildWithOptions(config.AppDir, config.OutDir, config.Toolkit, config.NormalizeLetConst)
 			if err != nil {
 				log.Printf("rebuild failed: %v", err)
 				snapshot = fileSnapshot(state.result.WatchPaths, filepath.Dir(state.result.OutputPath))

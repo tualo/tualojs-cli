@@ -47,10 +47,14 @@ type classCandidate struct {
 }
 
 func Build(appDir, outputDir string) (BuildResult, error) {
-	return BuildWithToolkit(appDir, outputDir, "")
+	return BuildWithOptions(appDir, outputDir, "", false)
 }
 
 func BuildWithToolkit(appDir, outputDir, selectedToolkit string) (BuildResult, error) {
+	return BuildWithOptions(appDir, outputDir, selectedToolkit, false)
+}
+
+func BuildWithOptions(appDir, outputDir, selectedToolkit string, normalizeLetConst bool) (BuildResult, error) {
 	config, root, err := loadAppConfig(appDir)
 	if err != nil {
 		return BuildResult{}, err
@@ -157,13 +161,16 @@ func BuildWithToolkit(appDir, outputDir, selectedToolkit string) (BuildResult, e
 
 	var bundle strings.Builder
 	for _, source := range ordered {
-		transformed, transformErr := transformJavaScript(string(source.data))
-		if transformErr != nil {
-			return BuildResult{}, fmt.Errorf("transform source %s: %w", source.name, transformErr)
+		content := string(source.data)
+		if normalizeLetConst {
+			content, err = transformJavaScript(content)
+			if err != nil {
+				return BuildResult{}, fmt.Errorf("transform source %s: %w", source.name, err)
+			}
 		}
 		fmt.Fprintf(&bundle, "\n// Source: %s\n", source.name)
-		bundle.WriteString(transformed)
-		if len(transformed) == 0 || transformed[len(transformed)-1] != '\n' {
+		bundle.WriteString(content)
+		if len(content) == 0 || content[len(content)-1] != '\n' {
 			bundle.WriteByte('\n')
 		}
 	}

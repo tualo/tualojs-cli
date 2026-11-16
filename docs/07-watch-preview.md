@@ -6,6 +6,7 @@
 go run ./cmd/extjsc watch \
   -app testdata/fixtures/minimal-modern \
   -toolkit modern \
+  -normalize-let-const \
   -addr 127.0.0.1:1841
 ```
 

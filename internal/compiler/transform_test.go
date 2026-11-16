@@ -26,17 +26,23 @@ func TestTransformRenamesLexicalRedeclarationOfFunctionParameter(t *testing.T) {
 	}
 }
 
-func TestTransformLeavesOrdinaryLetAndConstDeclarations(t *testing.T) {
+func TestTransformLowersFunctionScopeLetAndConst(t *testing.T) {
 	source := `function route(tablename) {
     let current = tablename;
     const fixed = 'fixed';
-    return current + fixed;
+    for (let index = 0; index < 1; index++) {}
+    return {let: current};
 }`
 	got, err := transformJavaScript(source)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got != source {
-		t.Fatalf("ordinary lexical declarations changed: got %q, want %q", got, source)
+	for _, expected := range []string{"var current = tablename", "var fixed = 'fixed'", "for (let index = 0"} {
+		if !strings.Contains(got, expected) {
+			t.Errorf("transformed source missing %q: %s", expected, got)
+		}
+	}
+	if !strings.Contains(got, "{let: current}") {
+		t.Errorf("property named let was transformed: %s", got)
 	}
 }
