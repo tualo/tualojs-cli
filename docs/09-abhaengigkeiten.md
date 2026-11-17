@@ -12,6 +12,7 @@ Die Trennung verhindert, dass ein `uses`-Verweis fälschlich einen Ladezyklus er
 
 - Parser-Test für `uses`-Metadaten.
 - Build-Test für die Reihenfolge und das Zusammenspiel mit einer rückwärts gerichteten eager `requires`-Kante.
+- Toolkit-Test, der unterschiedliche Classic-/Modern- und Build-Profil-Packages auflöst.
 - Parser- und Build-Test für direkte sowie objektbasierte `Ext.Loader.setPath`-Mappings.
 - `go test ./...` und `go vet ./...`.
 

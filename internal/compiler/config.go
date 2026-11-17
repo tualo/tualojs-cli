@@ -28,13 +28,15 @@ type appConfig struct {
 }
 
 type buildProfile struct {
-	Toolkit string `json:"toolkit"`
-	Theme   string `json:"theme"`
+	Toolkit  string   `json:"toolkit"`
+	Theme    string   `json:"theme"`
+	Requires pathList `json:"requires"`
 }
 
 type toolkitProfile struct {
 	JavaScript []jsEntry    `json:"js"`
 	CSS        resourceList `json:"css"`
+	Requires   pathList     `json:"requires"`
 }
 
 type pathList []string

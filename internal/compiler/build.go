@@ -107,6 +107,15 @@ func BuildWithOutputOptions(appDir, outputDir, selectedToolkit string, normalize
 	if toolkit != "" && toolkit != "classic" && toolkit != "modern" {
 		return BuildResult{}, fmt.Errorf("unsupported toolkit %q (expected classic or modern)", toolkit)
 	}
+	requiredPackages := append([]string{}, config.Requires...)
+	if toolkit == "classic" {
+		requiredPackages = append(requiredPackages, config.Classic.Requires...)
+	} else if toolkit == "modern" {
+		requiredPackages = append(requiredPackages, config.Modern.Requires...)
+	}
+	if profile, exists := config.Builds[toolkit]; exists {
+		requiredPackages = append(requiredPackages, profile.Requires...)
+	}
 	theme := config.Theme
 	if profile, exists := config.Builds[toolkit]; exists && profile.Toolkit == toolkit && profile.Theme != "" {
 		theme = profile.Theme
@@ -137,7 +146,7 @@ func BuildWithOutputOptions(appDir, outputDir, selectedToolkit string, normalize
 	if err != nil {
 		return BuildResult{}, err
 	}
-	appPackages, err := resolveAppPackages(root, config.Requires, toolkit, config.Locale)
+	appPackages, err := resolveAppPackages(root, requiredPackages, toolkit, config.Locale)
 	if err != nil {
 		return BuildResult{}, err
 	}

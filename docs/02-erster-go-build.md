@@ -23,7 +23,7 @@ Das Ergebnis liegt unter `testdata/fixtures/minimal-modern/build-go/app.js`. Rel
 - Wendet `app.json.ignore`-Regexe auf App-Classpaths, JS-/CSS-Einträge und Resource-Kopien an; die Muster verwenden Go-`regexp`/RE2-Syntax.
 - Liest `workspace.json`, validiert das Ext-JS-SDK gegen das feste Kompatibilitätsziel 8.0.0 und löst Paketnamen sowie `alternateName`-Aliase auf.
 - Unterstützt `-mode development|production`; Sencha-`//<debug>`-Blöcke werden im Development-Modus erhalten und im Production-Modus entfernt, bevor Klassenabhängigkeiten ausgewertet werden.
-- Folgt transitiven `app.json.requires`-/Package-`sencha.requires`-Abhängigkeiten und nimmt deren Classpath- und Override-Dateien in die Klassenauflösung auf.
+- Folgt transitiven `app.json.requires`- und toolkit-/Build-Profil-`requires`- sowie Package-`sencha.requires`-Abhängigkeiten und nimmt deren Classpath- und Override-Dateien in die Klassenauflösung auf.
 - Ersetzt `${toolkit.name}` in Classpath- und Override-Pfaden; universelle Apps wählen das Toolkit mit `-toolkit classic|modern`.
 - Verlangt genau einen JavaScript-Einstieg mit `bundle: true`.
 - Kopiert lokale zusätzliche JavaScript-Einträge und erhält die Reihenfolge von lokalen, gebündelten und Remote-Scripts aus `app.json.js`.

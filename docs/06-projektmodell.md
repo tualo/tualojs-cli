@@ -9,6 +9,7 @@ Der Compiler liest `workspace.json` im App-Verzeichnis und folgt `frameworks.ext
 ## Package-Abhängigkeiten
 
 - Package-Namen aus `app.json.requires` werden gegen Metadaten unter `packages/`, `modern/` und `classic/` im SDK aufgelöst.
+- Zusätzlich werden `requires` aus dem ausgewählten `classic`-/`modern`-Abschnitt und dem gleichnamigen `builds`-Profil berücksichtigt.
 - `sencha.name`, Verzeichnisname und `sencha.alternateName` sind gültige Namen.
 - Transitive Package-Abhängigkeiten aus `sencha.requires` werden zyklusfrei und deterministisch sortiert.
 - `sencha.classpath`- und `sencha.overrides`-Pfade expandieren `${package.dir}` und `${toolkit.name}`. Fehlende toolkit-spezifische Package-Pfade sind optional.

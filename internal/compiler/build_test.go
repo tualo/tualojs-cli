@@ -774,6 +774,50 @@ func TestBuildLoadsTransitiveSDKPackageClasspaths(t *testing.T) {
 	}
 }
 
+func TestBuildResolvesToolkitSpecificPackageRequirements(t *testing.T) {
+	root := makeFixture(t, map[string]string{
+		"app.json":                                          `{"name":"Example","namespace":"Example","toolkit":"modern","requires":["common"],"classic":{"requires":["classic-addon"]},"modern":{"requires":["modern-addon"]},"builds":{"classic":{"toolkit":"classic","requires":["classic-profile-addon"]}},"classpath":["app"],"js":[{"path":"app.js","bundle":true}]}`,
+		"workspace.json":                                    `{"frameworks":{"ext":{"path":"sdk","version":"8.0.0.43"}}}`,
+		"sdk/package.json":                                  `{"name":"ext","version":"8.0.0.43","compatVersion":"8.0.0"}`,
+		"sdk/packages/core/package.json":                    `{"version":"8.0.0.43","sencha":{"name":"core","classpath":"${package.dir}/src"}}`,
+		"sdk/classic/classic/package.json":                  `{"version":"8.0.0.43","sencha":{"name":"classic","requires":["core"],"classpath":"${package.dir}/src"}}`,
+		"sdk/modern/modern/package.json":                    `{"version":"8.0.0.43","sencha":{"name":"modern","requires":["core"],"classpath":"${package.dir}/src"}}`,
+		"sdk/packages/common/package.json":                  `{"version":"1.0.0","sencha":{"name":"common","classpath":"${package.dir}/src"}}`,
+		"sdk/packages/classic-addon/package.json":           `{"version":"1.0.0","sencha":{"name":"classic-addon","classpath":"${package.dir}/src"}}`,
+		"sdk/packages/modern-addon/package.json":            `{"version":"1.0.0","sencha":{"name":"modern-addon","classpath":"${package.dir}/src"}}`,
+		"sdk/packages/classic-profile-addon/package.json":   `{"version":"1.0.0","sencha":{"name":"classic-profile-addon","classpath":"${package.dir}/src"}}`,
+		"sdk/packages/common/src/Common.js":                 `Ext.define('Lib.Common', {});`,
+		"sdk/packages/classic-addon/src/Classic.js":         `Ext.define('Lib.Classic', {});`,
+		"sdk/packages/modern-addon/src/Modern.js":           `Ext.define('Lib.Modern', {});`,
+		"sdk/packages/classic-profile-addon/src/Profile.js": `Ext.define('Lib.Profile', {});`,
+		"app.js":       `Ext.application({name: 'Example'}); Ext.require(['Lib.Common', 'Lib.Classic', 'Lib.Modern', 'Lib.Profile']);`,
+		"app/Empty.js": "",
+	})
+
+	classic, err := BuildWithToolkit(root, "out-classic", "classic")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got, want := classic.Packages, []string{"common", "classic-addon", "classic-profile-addon"}; !reflect.DeepEqual(got, want) {
+		t.Fatalf("classic packages = %#v, want %#v", got, want)
+	}
+	classicBundle, err := os.ReadFile(classic.OutputPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(classicBundle), "sdk/packages/classic-profile-addon/src/Profile.js") || strings.Contains(string(classicBundle), "sdk/packages/modern-addon/src/Modern.js") {
+		t.Fatalf("classic package selection failed: %s", classicBundle)
+	}
+
+	modern, err := BuildWithToolkit(root, "out-modern", "modern")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got, want := modern.Packages, []string{"common", "modern-addon"}; !reflect.DeepEqual(got, want) {
+		t.Fatalf("modern packages = %#v, want %#v", got, want)
+	}
+}
+
 func TestBuildRejectsIncompatibleSDK(t *testing.T) {
 	root := makeFixture(t, map[string]string{
 		"app.json":         `{"name":"Example","namespace":"Example","classpath":["app"],"js":[{"path":"app.js","bundle":true}]}`,
