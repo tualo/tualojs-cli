@@ -26,21 +26,90 @@ func TestNormalizeFashionDynamicLiteralAssignments(t *testing.T) {
 	source := []byte(`$color: dynamic(#ddd);
 $spacing: dynamic(12px);
 $enabled: dynamic(true);
+$derived: dynamic($color);
 `)
 	got, changed, reason := normalizeFashionDynamic(source)
 	if reason != "" || !changed {
 		t.Fatalf("normalizeFashionDynamic changed=%t, reason=%q", changed, reason)
 	}
-	if want := "$color: #ddd;\n$spacing: 12px;\n$enabled: true;\n"; string(got) != want {
+	if want := "$color: #ddd;\n$spacing: 12px;\n$enabled: true;\n$derived: $color;\n"; string(got) != want {
 		t.Fatalf("normalized Sass = %q, want %q", got, want)
 	}
 	for _, unsupported := range [][]byte{
-		[]byte("$color: dynamic($base-color);\n"),
 		[]byte(".widget { color: dynamic(#fff); }\n"),
 	} {
 		if _, _, reason := normalizeFashionDynamic(unsupported); reason == "" {
 			t.Errorf("normalizeFashionDynamic(%q) should require Fashion", unsupported)
 		}
+	}
+}
+
+func TestResolvePackageSassVariablesOrdersForwardReferences(t *testing.T) {
+	root := makeFixture(t, map[string]string{
+		"theme-child/sass/var/child.scss": `$accent: dynamic($base-color);`,
+		"theme-base/sass/var/base.scss":   `$base-color: dynamic(#246);`,
+	})
+
+	sources, watchPaths, variables, warnings, err := resolvePackageSassVariables(root, []string{
+		filepath.Join(root, "theme-child", "sass", "var"),
+		filepath.Join(root, "theme-base", "sass", "var"),
+	}, nil, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	wantSources := []string{
+		filepath.Join(root, "theme-base", "sass", "var", "base.scss"),
+		filepath.Join(root, "theme-child", "sass", "var", "child.scss"),
+	}
+	if !reflect.DeepEqual(sources, wantSources) {
+		t.Fatalf("package Sass sources = %#v, want dependency order %#v", sources, wantSources)
+	}
+	if len(warnings) != 0 {
+		t.Fatalf("package Sass warnings = %#v", warnings)
+	}
+	if !variables["base-color"] || !variables["accent"] {
+		t.Fatalf("available Sass variables = %#v, want base-color and accent", variables)
+	}
+	wantWatchPaths := []string{
+		filepath.Join(root, "theme-child", "sass", "var", "child.scss"),
+		filepath.Join(root, "theme-base", "sass", "var", "base.scss"),
+	}
+	if !reflect.DeepEqual(watchPaths, wantWatchPaths) {
+		t.Fatalf("package Sass watch paths = %#v, want %#v", watchPaths, wantWatchPaths)
+	}
+}
+
+func TestDartSassCompilesDynamicPackageVariableReferences(t *testing.T) {
+	binary := os.Getenv("SASS")
+	if binary == "" {
+		binary = "sass"
+	}
+	if _, err := exec.LookPath(binary); err != nil {
+		t.Skip("Dart Sass is not installed")
+	}
+
+	root := makeFixture(t, map[string]string{
+		"theme-child/sass/var/child.scss": `$accent: dynamic($base-color);`,
+		"theme-base/sass/var/base.scss":   `$base-color: dynamic(#246);`,
+		"app/Main.scss":                   `.main { color: $accent; }`,
+	})
+	variables, _, _, _, err := resolvePackageSassVariables(root, []string{
+		filepath.Join(root, "theme-child", "sass", "var"),
+		filepath.Join(root, "theme-base", "sass", "var"),
+	}, nil, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	sources := append(variables, filepath.Join(root, "app", "Main.scss"))
+	css, warnings, err := compileClassSass(root, sources, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(warnings) != 0 {
+		t.Fatalf("Sass warnings = %#v", warnings)
+	}
+	if !strings.Contains(string(css), "color: #246") {
+		t.Fatalf("compiled CSS = %s, want dynamic variable reference resolved", css)
 	}
 }
 

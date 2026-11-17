@@ -16,7 +16,7 @@ var sassImportDirective = regexp.MustCompile(`(?m)^[\t ]*@(import|use|forward)[\
 var sassImportPath = regexp.MustCompile(`["']([^"']+)["']`)
 var sassVariableDeclaration = regexp.MustCompile(`(?m)^[\t ]*\$([a-zA-Z_][a-zA-Z0-9_-]*)[\t ]*:`)
 var sassVariableReference = regexp.MustCompile(`\$([a-zA-Z_][a-zA-Z0-9_-]*)`)
-var fashionDynamicVariable = regexp.MustCompile(`^([\t ]*\$[a-zA-Z_][a-zA-Z0-9_-]*[\t ]*:[\t ]*)dynamic\([\t ]*(#[0-9a-fA-F]{3,8}|[-+]?(?:[0-9]+(?:\.[0-9]*)?|\.[0-9]+)(?:[a-zA-Z%]+)?|[a-zA-Z_-][a-zA-Z0-9_-]*|"(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*')[\t ]*\)([\t ]*;[\t ]*(?://.*)?)?$`)
+var fashionDynamicVariable = regexp.MustCompile(`^([\t ]*\$[a-zA-Z_][a-zA-Z0-9_-]*[\t ]*:[\t ]*)dynamic\([\t ]*(#[0-9a-fA-F]{3,8}|[-+]?(?:[0-9]+(?:\.[0-9]*)?|\.[0-9]+)(?:[a-zA-Z%]+)?|[a-zA-Z_-][a-zA-Z0-9_-]*|\$[a-zA-Z_][a-zA-Z0-9_-]*|"(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*')[\t ]*\)([\t ]*;[\t ]*(?://.*)?)?$`)
 
 func resolveClassSassSources(appRoot string, sourceRoots []string, ignore []*regexp.Regexp) ([]string, error) {
 	var sources []string
@@ -163,6 +163,13 @@ func resolvePackageSassVariables(appRoot string, roots []string, initialVariable
 	var sources []string
 	var watchPaths []string
 	var warnings []string
+	type variableSource struct {
+		path        string
+		data        []byte
+		definitions map[string]bool
+	}
+	var pending []variableSource
+	seenFiles := make(map[string]bool)
 	for _, root := range roots {
 		info, err := os.Stat(root)
 		if err != nil {
@@ -201,6 +208,10 @@ func resolvePackageSassVariables(appRoot string, roots []string, initialVariable
 			if err != nil {
 				return nil, nil, nil, nil, err
 			}
+			if seenFiles[absolute] {
+				continue
+			}
+			seenFiles[absolute] = true
 			watchPaths = append(watchPaths, absolute)
 			data, err := os.ReadFile(file)
 			if err != nil {
@@ -210,15 +221,36 @@ func resolvePackageSassVariables(appRoot string, roots []string, initialVariable
 			if len(definitions) == 0 {
 				continue
 			}
-			if reason := unsupportedPackageSassVariableSource(data, definitions, available); reason != "" {
-				warnings = append(warnings, fmt.Sprintf("skipped package Sass var source %s: %s", file, reason))
+			pending = append(pending, variableSource{path: absolute, data: data, definitions: definitions})
+		}
+	}
+	for len(pending) > 0 {
+		remaining := make([]variableSource, 0, len(pending))
+		progress := false
+		for _, source := range pending {
+			reason := unsupportedPackageSassVariableSource(source.data, source.definitions, available)
+			if strings.HasPrefix(reason, "references undefined package/theme variable $") {
+				remaining = append(remaining, source)
 				continue
 			}
-			sources = append(sources, absolute)
-			for name := range definitions {
+			progress = true
+			if reason != "" {
+				warnings = append(warnings, fmt.Sprintf("skipped package Sass var source %s: %s", source.path, reason))
+				continue
+			}
+			sources = append(sources, source.path)
+			for name := range source.definitions {
 				available[name] = true
 			}
 		}
+		if !progress {
+			for _, source := range remaining {
+				reason := unsupportedPackageSassVariableSource(source.data, source.definitions, available)
+				warnings = append(warnings, fmt.Sprintf("skipped package Sass var source %s: %s", source.path, reason))
+			}
+			break
+		}
+		pending = remaining
 	}
 	return uniquePaths(sources), uniquePaths(watchPaths), available, warnings, nil
 }
