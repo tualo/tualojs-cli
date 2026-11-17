@@ -112,6 +112,49 @@ Ext.require('Example.DebugOnly');
 	}
 }
 
+func TestBuildPreprocessesToolkitConditionDependencies(t *testing.T) {
+	root := makeFixture(t, map[string]string{
+		"app.json": `{"name":"Example","namespace":"Example","classpath":["app"],"js":[{"path":"app.js","bundle":true}]}`,
+		"app.js":   `Ext.application({name: 'Example', extend: 'Example.Application'});`,
+		"app/Application.js": `Ext.define('Example.Application', {
+    extend: 'Ext.app.Application',
+    // <if classic>
+    requires: ['Example.ClassicOnly'],
+    // </if>
+    // <if modern>
+    requires: ['Example.ModernOnly'],
+    // </if>
+});`,
+		"app/ClassicOnly.js": `Ext.define('Example.ClassicOnly', {});`,
+		"app/ModernOnly.js":  `Ext.define('Example.ModernOnly', {});`,
+	})
+
+	for _, test := range []struct {
+		toolkit string
+		present string
+		absent  string
+	}{
+		{toolkit: "classic", present: "app/ClassicOnly.js", absent: "app/ModernOnly.js"},
+		{toolkit: "modern", present: "app/ModernOnly.js", absent: "app/ClassicOnly.js"},
+	} {
+		result, err := BuildWithToolkit(root, "out-"+test.toolkit, test.toolkit)
+		if err != nil {
+			t.Fatalf("build %s: %v", test.toolkit, err)
+		}
+		bundle, err := os.ReadFile(result.OutputPath)
+		if err != nil {
+			t.Fatal(err)
+		}
+		content := string(bundle)
+		if !strings.Contains(content, "// Source: "+test.present) || strings.Contains(content, "// Source: "+test.absent) {
+			t.Errorf("%s build selected wrong conditional dependencies: %s", test.toolkit, content)
+		}
+		if strings.Contains(content, "<if classic>") || strings.Contains(content, "<if modern>") || strings.Contains(content, "</if>") {
+			t.Errorf("%s build retained toolkit markers", test.toolkit)
+		}
+	}
+}
+
 func TestBuildRejectsDependencyCycle(t *testing.T) {
 	root := makeFixture(t, map[string]string{
 		"app.json": `{"name":"Example","namespace":"Example","classpath":["app"],"js":[{"path":"app.js","bundle":true}]}`,

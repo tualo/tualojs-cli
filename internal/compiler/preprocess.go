@@ -5,52 +5,118 @@ import (
 	"strings"
 )
 
-func preprocessSencha(source, mode string) (string, error) {
+type toolkitCondition struct {
+	name   string
+	active bool
+}
+
+func preprocessSencha(source, mode, toolkit string) (string, error) {
 	if mode != BuildModeDevelopment && mode != BuildModeProduction {
 		return "", fmt.Errorf("unsupported build mode %q", mode)
 	}
 	lines := strings.SplitAfter(source, "\n")
 	var output strings.Builder
-	depth := 0
+	debugDepth := 0
+	var toolkitConditions []toolkitCondition
 	for _, line := range lines {
 		lineContent := strings.TrimSuffix(strings.TrimSuffix(line, "\n"), "\r")
 		lineEnding := line[len(lineContent):]
+		toolkitMarker, condition := toolkitConditionMarker(lineContent)
+		toolkitActive := len(toolkitConditions) == 0 || toolkitConditions[len(toolkitConditions)-1].active
+		active := toolkitActive && (debugDepth == 0 || mode == BuildModeDevelopment)
+
+		if toolkitMarker == "open" {
+			conditionActive, err := evaluateToolkitCondition(condition, toolkit)
+			if err != nil {
+				return "", fmt.Errorf("Sencha toolkit condition %q: %w", condition, err)
+			}
+			toolkitConditions = append(toolkitConditions, toolkitCondition{name: condition, active: toolkitActive && conditionActive})
+			output.WriteString(lineEnding)
+			continue
+		}
+		if toolkitMarker == "close" {
+			if len(toolkitConditions) == 0 {
+				return "", fmt.Errorf("unmatched Sencha toolkit condition close marker")
+			}
+			current := toolkitConditions[len(toolkitConditions)-1]
+			if condition != "" && condition != current.name {
+				return "", fmt.Errorf("Sencha toolkit condition close %q does not match open condition %q", condition, current.name)
+			}
+			toolkitConditions = toolkitConditions[:len(toolkitConditions)-1]
+			output.WriteString(lineEnding)
+			continue
+		}
+
 		marker := debugMarker(lineContent)
 		switch marker {
 		case "open":
-			depth++
-			if mode == BuildModeDevelopment {
+			debugDepth++
+			if active && mode == BuildModeDevelopment {
 				output.WriteString(line)
 			} else {
 				output.WriteString(lineEnding)
 			}
 		case "close":
-			if depth == 0 {
-				if mode == BuildModeDevelopment {
+			if debugDepth == 0 {
+				if toolkitActive && mode == BuildModeDevelopment {
 					output.WriteString(line)
 				} else {
 					output.WriteString(lineEnding)
 				}
 				continue
 			}
-			depth--
-			if mode == BuildModeDevelopment {
+			debugDepth--
+			if toolkitActive && mode == BuildModeDevelopment {
 				output.WriteString(line)
 			} else {
 				output.WriteString(lineEnding)
 			}
 		default:
-			if mode == BuildModeDevelopment || depth == 0 {
+			if active {
 				output.WriteString(line)
 			} else {
 				output.WriteString(lineEnding)
 			}
 		}
 	}
-	if depth != 0 {
+	if debugDepth != 0 {
 		return "", fmt.Errorf("unterminated //<debug> block")
 	}
+	if len(toolkitConditions) != 0 {
+		return "", fmt.Errorf("unterminated Sencha toolkit condition block %q", toolkitConditions[len(toolkitConditions)-1].name)
+	}
 	return output.String(), nil
+}
+
+func evaluateToolkitCondition(condition, toolkit string) (bool, error) {
+	switch condition {
+	case "classic", "modern":
+		if toolkit == "" {
+			return false, fmt.Errorf("condition %q requires a selected toolkit", condition)
+		}
+		return toolkit == condition, nil
+	case "nonBrowser", "legacyBrowser":
+		// This compiler currently builds browser applications for modern browsers.
+		return false, nil
+	default:
+		return false, fmt.Errorf("unknown condition %q", condition)
+	}
+}
+
+func toolkitConditionMarker(line string) (string, string) {
+	line = strings.TrimSpace(line)
+	if !strings.HasPrefix(line, "//") {
+		return "", ""
+	}
+	marker := strings.TrimSpace(strings.TrimPrefix(line, "//"))
+	if strings.HasPrefix(marker, "</if") && strings.HasSuffix(marker, ">") {
+		condition := strings.TrimSpace(strings.TrimSuffix(strings.TrimPrefix(marker, "</if"), ">"))
+		return "close", condition
+	}
+	if strings.HasPrefix(marker, "<if ") && strings.HasSuffix(marker, ">") {
+		return "open", strings.TrimSpace(strings.TrimSuffix(strings.TrimPrefix(marker, "<if "), ">"))
+	}
+	return "", ""
 }
 
 func debugMarker(line string) string {
