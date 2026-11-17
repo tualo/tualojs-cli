@@ -6,6 +6,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"regexp"
 	"sort"
 	"strings"
 )
@@ -95,6 +96,10 @@ func BuildWithOutputOptions(appDir, outputDir, selectedToolkit string, normalize
 	if err != nil {
 		return BuildResult{}, err
 	}
+	ignorePatterns, err := compileIgnorePatterns(config.Ignore)
+	if err != nil {
+		return BuildResult{}, err
+	}
 	toolkit := selectedToolkit
 	if toolkit == "" {
 		toolkit = config.Toolkit
@@ -124,11 +129,11 @@ func BuildWithOutputOptions(appDir, outputDir, selectedToolkit string, normalize
 	if toolkit == "" && len(config.Requires) > 0 {
 		return BuildResult{}, fmt.Errorf("app package resolution requires a toolkit; pass -toolkit classic or -toolkit modern")
 	}
-	resources, resourceWatchPaths, err := resolveResources(root, config.Name, mode, config.Resources, toolkit)
+	resources, resourceWatchPaths, err := resolveResources(root, config.Name, mode, config.Resources, toolkit, ignorePatterns)
 	if err != nil {
 		return BuildResult{}, err
 	}
-	styleSheets, styleWatchPaths, err := resolveStylesheets(root, config, toolkit, mode)
+	styleSheets, styleWatchPaths, err := resolveStylesheets(root, config, toolkit, mode, ignorePatterns)
 	if err != nil {
 		return BuildResult{}, err
 	}
@@ -159,7 +164,7 @@ func BuildWithOutputOptions(appDir, outputDir, selectedToolkit string, normalize
 	if err != nil {
 		return BuildResult{}, fmt.Errorf("JavaScript entry: %w", err)
 	}
-	scripts, scriptWatchPaths, err := resolveScripts(root, config.JavaScript, toolkit)
+	scripts, scriptWatchPaths, err := resolveScripts(root, config.JavaScript, toolkit, ignorePatterns)
 	if err != nil {
 		return BuildResult{}, err
 	}
@@ -177,6 +182,10 @@ func BuildWithOutputOptions(appDir, outputDir, selectedToolkit string, normalize
 		return BuildResult{}, fmt.Errorf("parse JavaScript entry %s: %w", entryPath, err)
 	}
 	appDependencies = append(appDependencies, sourceDependencies...)
+	entryLoaderPaths, err := parseLoaderPaths(string(entryData))
+	if err != nil {
+		return BuildResult{}, fmt.Errorf("parse JavaScript entry loader paths: %w", err)
+	}
 
 	paths := make([]classSourcePath, 0, len(config.Classpath)+len(config.Overrides)+len(appPackages.classpaths)+len(appPackages.overrides)+len(frameworkPackages.classpaths)+len(frameworkPackages.overrides))
 	for _, path := range config.Classpath {
@@ -191,6 +200,12 @@ func BuildWithOutputOptions(appDir, outputDir, selectedToolkit string, normalize
 		sourcePath.framework = true
 		paths = append(paths, sourcePath)
 	}
+	loaderPaths, err := discoverLoaderPaths(paths)
+	if err != nil {
+		return BuildResult{}, err
+	}
+	loaderPaths = uniqueLoaderMappings(append(entryLoaderPaths, loaderPaths...))
+	paths = append(paths, resolveLoaderPathSources(root, config.Namespace, loaderPaths, paths)...)
 	watchPaths := append([]string{}, appPackages.watchPaths...)
 	watchPaths = append(watchPaths, frameworkPackages.watchPaths...)
 	watchPaths = append(watchPaths, resourceWatchPaths...)
@@ -207,7 +222,7 @@ func BuildWithOutputOptions(appDir, outputDir, selectedToolkit string, normalize
 		}
 	}
 	watchPaths = uniquePaths(watchPaths)
-	sources, classes, overrides, aliases, frameworkFiles, err := loadClasses(paths, mode)
+	sources, classes, overrides, aliases, frameworkFiles, err := loadClasses(paths, mode, root, ignorePatterns)
 	if err != nil {
 		return BuildResult{}, err
 	}
@@ -247,7 +262,7 @@ func BuildWithOutputOptions(appDir, outputDir, selectedToolkit string, normalize
 			return BuildResult{}, fmt.Errorf("output bundle would overwrite class source %s", source.path)
 		}
 	}
-	resourceFiles, err := copyResources(resources, outputRoot)
+	resourceFiles, err := copyResources(resources, outputRoot, root, ignorePatterns)
 	if err != nil {
 		return BuildResult{}, err
 	}
@@ -292,6 +307,92 @@ func BuildWithOutputOptions(appDir, outputDir, selectedToolkit string, normalize
 		Mode:                 mode,
 		SourceMapPath:        sourceMapPath,
 	}, nil
+}
+
+func discoverLoaderPaths(paths []classSourcePath) ([]loaderPathMapping, error) {
+	var mappings []loaderPathMapping
+	for _, sourcePath := range paths {
+		if sourcePath.framework {
+			continue
+		}
+		path, err := projectPath(sourcePath.base, sourcePath.path)
+		if err != nil {
+			continue
+		}
+		info, err := os.Stat(path)
+		if err != nil {
+			if sourcePath.optional && os.IsNotExist(err) {
+				continue
+			}
+			return nil, fmt.Errorf("inspect loader-path source %s: %w", path, err)
+		}
+		parseFile := func(file string) error {
+			if !strings.EqualFold(filepath.Ext(file), ".js") {
+				return nil
+			}
+			data, err := os.ReadFile(file)
+			if err != nil {
+				return err
+			}
+			found, err := parseLoaderPaths(string(data))
+			if err != nil {
+				return fmt.Errorf("parse loader paths in %s: %w", file, err)
+			}
+			mappings = append(mappings, found...)
+			return nil
+		}
+		if !info.IsDir() {
+			if err := parseFile(path); err != nil {
+				return nil, err
+			}
+			continue
+		}
+		if err := filepath.WalkDir(path, func(file string, entry os.DirEntry, walkErr error) error {
+			if walkErr != nil {
+				return walkErr
+			}
+			if entry.IsDir() {
+				return nil
+			}
+			return parseFile(file)
+		}); err != nil {
+			return nil, fmt.Errorf("scan loader paths under %s: %w", path, err)
+		}
+	}
+	return uniqueLoaderMappings(mappings), nil
+}
+
+func resolveLoaderPathSources(root, namespace string, mappings []loaderPathMapping, existing []classSourcePath) []classSourcePath {
+	known := make(map[string]bool)
+	for _, path := range existing {
+		resolved, err := projectPath(path.base, path.path)
+		if err == nil {
+			known[resolved] = true
+		}
+	}
+	var paths []classSourcePath
+	for _, mapping := range mappings {
+		if mapping.Namespace != namespace && !strings.HasPrefix(mapping.Namespace, namespace+".") {
+			continue
+		}
+		if mapping.Path == "" || strings.Contains(mapping.Path, "://") {
+			continue
+		}
+		resolved, err := projectPath(root, mapping.Path)
+		if err != nil || resolved == root || known[resolved] {
+			continue
+		}
+		info, err := os.Stat(resolved)
+		if err != nil || !info.IsDir() {
+			continue
+		}
+		known[resolved] = true
+		relative, err := filepath.Rel(root, resolved)
+		if err == nil {
+			paths = append(paths, classSourcePath{path: relative, base: root, optional: true})
+		}
+	}
+	return paths
 }
 
 func uniquePaths(paths []string) []string {
@@ -343,7 +444,7 @@ func bundleEntry(config appConfig) (string, error) {
 	return entries[0], nil
 }
 
-func loadClasses(paths []classSourcePath, mode string) ([]sourceFile, map[string]sourceFile, map[string][]overrideDeclaration, map[string][]string, map[string]string, error) {
+func loadClasses(paths []classSourcePath, mode, appRoot string, ignore []*regexp.Regexp) ([]sourceFile, map[string]sourceFile, map[string][]overrideDeclaration, map[string][]string, map[string]string, error) {
 	var sources []sourceFile
 	for priority, sourcePath := range paths {
 		path, err := projectPath(sourcePath.base, sourcePath.path)
@@ -358,6 +459,9 @@ func loadClasses(paths []classSourcePath, mode string) ([]sourceFile, map[string
 			return nil, nil, nil, nil, nil, fmt.Errorf("source path %q: %w", sourcePath.path, err)
 		}
 		if !info.IsDir() {
+			if isIgnoredProjectPath(appRoot, path, ignore) {
+				continue
+			}
 			if strings.EqualFold(filepath.Ext(path), ".js") {
 				if err := appendSource(sourcePath.base, path, sourcePath.prefix, priority, sourcePath.framework, mode, &sources); err != nil {
 					return nil, nil, nil, nil, nil, err
@@ -370,6 +474,12 @@ func loadClasses(paths []classSourcePath, mode string) ([]sourceFile, map[string
 				return walkErr
 			}
 			if entry.IsDir() || !strings.EqualFold(filepath.Ext(entry.Name()), ".js") {
+				if entry.IsDir() && isIgnoredProjectPath(appRoot, filePath, ignore) {
+					return filepath.SkipDir
+				}
+				return nil
+			}
+			if isIgnoredProjectPath(appRoot, filePath, ignore) {
 				return nil
 			}
 			return appendSource(sourcePath.base, filePath, sourcePath.prefix, priority, sourcePath.framework, mode, &sources)

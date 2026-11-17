@@ -18,6 +18,7 @@ type appConfig struct {
 	Classpath  pathList                `json:"classpath"`
 	Overrides  pathList                `json:"overrides"`
 	Requires   pathList                `json:"requires"`
+	Ignore     pathList                `json:"ignore"`
 	Builds     map[string]buildProfile `json:"builds"`
 	Classic    toolkitProfile          `json:"classic"`
 	Modern     toolkitProfile          `json:"modern"`

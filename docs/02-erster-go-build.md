@@ -20,6 +20,7 @@ Das Ergebnis liegt unter `testdata/fixtures/minimal-modern/build-go/app.js`. Rel
 ## Implementiertes Verhalten
 
 - Liest App-Name, Namespace, Classpath und JavaScript-Einträge aus `app.json`.
+- Wendet `app.json.ignore`-Regexe auf App-Classpaths, JS-/CSS-Einträge und Resource-Kopien an; die Muster verwenden Go-`regexp`/RE2-Syntax.
 - Liest `workspace.json`, validiert das Ext-JS-SDK gegen das feste Kompatibilitätsziel 8.0.0 und löst Paketnamen sowie `alternateName`-Aliase auf.
 - Unterstützt `-mode development|production`; Sencha-`//<debug>`-Blöcke werden im Development-Modus erhalten und im Production-Modus entfernt, bevor Klassenabhängigkeiten ausgewertet werden.
 - Folgt transitiven `app.json.requires`-/Package-`sencha.requires`-Abhängigkeiten und nimmt deren Classpath- und Override-Dateien in die Klassenauflösung auf.
@@ -34,6 +35,7 @@ Das Ergebnis liegt unter `testdata/fixtures/minimal-modern/build-go/app.js`. Rel
 - Löst Klassen-Aliase und `alternateClassName` aus `alias`, `xtype`, `controller`, `viewModel` und `plugins` anhand der jeweiligen Config-Referenzen auf.
 - Mit `-normalize-let-const` werden `let`-/`const`-Deklarationen im direkten Funktions-Scope zu `var` normalisiert, einschließlich eines gleichnamigen Funktionsparameters. Standardmäßig bleiben sie unverändert.
 - Löst `Namespace.*` und `Ext.*` gegen die App- und ausgewählten SDK-Classpaths auf. App-/Package-Klassen kommen ins Bundle; Framework-Klassen werden als Preview-Preloads ausgewiesen.
+- Liest statische `Ext.Loader.setPath`-Mappings und scannt vorhandene App-Verzeichnisse für die gemappten Namespaces.
 - Beachtet die Reihenfolge der Classpath-Pfade. Bei doppelten Klassendefinitionen gewinnt ein eindeutiger kanonischer Dateiname, ansonsten die frühere Classpath-Quelle; uneindeutige Fälle sind Fehler.
 - Ordnet referenzierte App-Klassen deterministisch in Abhängigkeitsreihenfolge. Zyklen und nicht eindeutig auflösbare doppelte Klassennamen sind Fehler; fehlende App-Klassen werden als Warnungen ausgegeben, da Projekte Klassen über dynamische Loader-Pfade nachladen können.
 - Schreibt die ausgewählten Quelldateien mit Herkunftskommentaren in ein Bundle; neben der dokumentierten Normalisierung bleiben Quellen weitgehend unverändert.

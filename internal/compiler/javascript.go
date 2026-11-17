@@ -2,6 +2,7 @@ package compiler
 
 import (
 	"fmt"
+	"sort"
 	"strings"
 )
 
@@ -29,6 +30,84 @@ type classDeclaration struct {
 	aliases      []string
 	dependencies []string
 	uses         []string
+}
+
+type loaderPathMapping struct {
+	Namespace string
+	Path      string
+}
+
+func parseLoaderPaths(source string) ([]loaderPathMapping, error) {
+	tokens, err := tokenize(source)
+	if err != nil {
+		return nil, err
+	}
+	var mappings []loaderPathMapping
+	for i := 0; i+5 < len(tokens); i++ {
+		if !is(tokens, i, "Ext") || !is(tokens, i+1, ".") || !is(tokens, i+2, "Loader") || !is(tokens, i+3, ".") || !is(tokens, i+4, "setPath") || !is(tokens, i+5, "(") {
+			continue
+		}
+		argument := i + 6
+		if argument < len(tokens) && tokens[argument].kind == stringToken {
+			if argument+2 < len(tokens) && is(tokens, argument+1, ",") && tokens[argument+2].kind == stringToken && isStaticString(tokens, argument+2, len(tokens)) {
+				mappings = append(mappings, loaderPathMapping{Namespace: tokens[argument].value, Path: tokens[argument+2].value})
+			}
+			continue
+		}
+		if is(tokens, argument, "{") {
+			properties, err := stringObjectMap(tokens, argument)
+			if err != nil {
+				return nil, err
+			}
+			for namespace, path := range properties {
+				mappings = append(mappings, loaderPathMapping{Namespace: namespace, Path: path})
+			}
+		}
+	}
+	return uniqueLoaderMappings(mappings), nil
+}
+
+func stringObjectMap(tokens []jsToken, open int) (map[string]string, error) {
+	close, err := matchingDelimiter(tokens, open, "{", "}")
+	if err != nil {
+		return nil, err
+	}
+	values := make(map[string]string)
+	for i := open + 1; i < close; {
+		if is(tokens, i, ",") {
+			i++
+			continue
+		}
+		if i+1 >= close || (tokens[i].kind != identifierToken && tokens[i].kind != stringToken) || !is(tokens, i+1, ":") {
+			i = skipPropertyValue(tokens, i, close)
+			continue
+		}
+		value := i + 2
+		if value < close && tokens[value].kind == stringToken && isStaticString(tokens, value, close) {
+			values[tokens[i].value] = tokens[value].value
+		}
+		i = skipPropertyValue(tokens, value, close)
+	}
+	return values, nil
+}
+
+func uniqueLoaderMappings(mappings []loaderPathMapping) []loaderPathMapping {
+	seen := make(map[string]bool, len(mappings))
+	unique := make([]loaderPathMapping, 0, len(mappings))
+	for _, mapping := range mappings {
+		key := mapping.Namespace + "\x00" + mapping.Path
+		if !seen[key] {
+			seen[key] = true
+			unique = append(unique, mapping)
+		}
+	}
+	sort.Slice(unique, func(i, j int) bool {
+		if unique[i].Namespace == unique[j].Namespace {
+			return unique[i].Path < unique[j].Path
+		}
+		return unique[i].Namespace < unique[j].Namespace
+	})
+	return unique
 }
 
 func parseExtMetadata(source string) ([]classDeclaration, []string, []string, error) {

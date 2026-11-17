@@ -335,6 +335,33 @@ func TestBuildResolvesAlternateClassName(t *testing.T) {
 	}
 }
 
+func TestBuildScansStaticLoaderPathDirectories(t *testing.T) {
+	root := makeFixture(t, map[string]string{
+		"app.json": `{"name":"Example","namespace":"Example","classpath":["app"],"js":[{"path":"app.js","bundle":true}]}`,
+		"app.js": `
+Ext.Loader.setPath('Example.lazy', './lazy');
+Ext.application({name: 'Example', extend: 'Example.Application'});
+Ext.create('Example.lazy.Widget');
+`,
+		"app/Application.js": `Ext.define('Example.Application', { extend: 'Ext.app.Application' });`,
+		"lazy/Widget.js":     `Ext.define('Example.lazy.Widget', { extend: 'Ext.Component' });`,
+	})
+	result, err := Build(root, "out")
+	if err != nil {
+		t.Fatal(err)
+	}
+	bundle, err := os.ReadFile(result.OutputPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	content := string(bundle)
+	widget := strings.Index(content, "// Source: lazy/Widget.js")
+	entry := strings.Index(content, "// Source: app.js")
+	if widget < 0 || entry < 0 || widget >= entry {
+		t.Fatalf("loader-mapped class was not included before the entry: %d, %d", widget, entry)
+	}
+}
+
 func TestBuildLoadsMixinBeforeConsumer(t *testing.T) {
 	root := makeFixture(t, map[string]string{
 		"app.json": `{"name":"Example","namespace":"Example","classpath":["app"],"js":[{"path":"app.js","bundle":true}]}`,
@@ -544,6 +571,39 @@ func TestBuildRejectsResourceOutputOutsideBuildResources(t *testing.T) {
 	})
 	if _, err := Build(root, "out"); err == nil || !strings.Contains(err.Error(), "escapes resources directory") {
 		t.Fatalf("Build error = %v, want resource output traversal error", err)
+	}
+}
+
+func TestBuildHonorsAppIgnorePatterns(t *testing.T) {
+	root := makeFixture(t, map[string]string{
+		"app.json":                 `{"name":"Example","namespace":"Example","classpath":["app"],"ignore":["(^|/)CVS(/?$|/.*?$)"],"resources":[{"path":"resources","output":"shared"}],"css":[{"path":"styles/app.css"}],"js":[{"path":"app.js","bundle":true},{"path":"assets/CVS/ignored.js"}]}`,
+		"app.js":                   `Ext.application({name: 'Example', extend: 'Example.Widget'});`,
+		"app/Widget.js":            `Ext.define('Example.Widget', { extend: 'Ext.Component' });`,
+		"app/CVS/Old.js":           `Ext.define('Example.Old', { extend: 'Ext.Component' });`,
+		"assets/CVS/ignored.js":    `window.ignored = true;`,
+		"resources/Readme.txt":     "kept",
+		"resources/CVS/secret.txt": "ignored",
+		"styles/app.css":           "body { color: red; }",
+	})
+	result, err := Build(root, "out")
+	if err != nil {
+		t.Fatal(err)
+	}
+	bundle, err := os.ReadFile(result.OutputPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(bundle), "app/CVS/Old.js") {
+		t.Fatal("ignored classpath file was included")
+	}
+	if result.ResourceFiles != 1 {
+		t.Fatalf("resource count = %d, want only non-ignored file", result.ResourceFiles)
+	}
+	if len(result.StyleSheets) != 1 || result.StyleSheets[0].URL != "styles/app.css" {
+		t.Fatalf("ignored JS entry affected stylesheet manifest: %#v", result.StyleSheets)
+	}
+	if len(result.Scripts) != 1 || result.Scripts[0].URL != "app.js" {
+		t.Fatalf("ignored script entry was copied: %#v", result.Scripts)
 	}
 }
 

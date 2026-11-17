@@ -5,6 +5,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 )
 
@@ -31,7 +32,7 @@ type StyleSheet struct {
 	Remote bool
 }
 
-func resolveStylesheets(appRoot string, config appConfig, toolkit, mode string) ([]resolvedStylesheet, []string, error) {
+func resolveStylesheets(appRoot string, config appConfig, toolkit, mode string, ignore []*regexp.Regexp) ([]resolvedStylesheet, []string, error) {
 	entries := append(resourceList{}, config.CSS...)
 	if toolkit == "classic" {
 		entries = append(entries, config.Classic.CSS...)
@@ -60,6 +61,9 @@ func resolveStylesheets(appRoot string, config appConfig, toolkit, mode string) 
 		source, err := projectPath(appRoot, path)
 		if err != nil {
 			return nil, nil, fmt.Errorf("stylesheet source: %w", err)
+		}
+		if isIgnoredProjectPath(appRoot, source, ignore) {
+			continue
 		}
 		info, err := os.Stat(source)
 		if err != nil {
@@ -106,7 +110,7 @@ func copyStylesheets(stylesheets []resolvedStylesheet, outputRoot, bundlePath st
 	return copied, nil
 }
 
-func resolveScripts(appRoot string, entries []jsEntry, toolkit string) ([]resolvedScript, []string, error) {
+func resolveScripts(appRoot string, entries []jsEntry, toolkit string, ignore []*regexp.Regexp) ([]resolvedScript, []string, error) {
 	var scripts []resolvedScript
 	var watchPaths []string
 	for _, entry := range entries {
@@ -128,6 +132,9 @@ func resolveScripts(appRoot string, entries []jsEntry, toolkit string) ([]resolv
 		source, err := projectPath(appRoot, paths[0])
 		if err != nil {
 			return nil, nil, fmt.Errorf("JavaScript asset: %w", err)
+		}
+		if isIgnoredProjectPath(appRoot, source, ignore) {
+			continue
 		}
 		info, err := os.Stat(source)
 		if err != nil {
@@ -181,7 +188,7 @@ func copyScripts(scripts []resolvedScript, outputRoot, bundlePath string) ([]Scr
 	return assets, nil
 }
 
-func resolveResources(appRoot, appName, mode string, entries resourceList, toolkit string) ([]resolvedResource, []string, error) {
+func resolveResources(appRoot, appName, mode string, entries resourceList, toolkit string, ignore []*regexp.Regexp) ([]resolvedResource, []string, error) {
 	var resources []resolvedResource
 	var watchPaths []string
 	for _, entry := range entries {
@@ -200,6 +207,9 @@ func resolveResources(appRoot, appName, mode string, entries resourceList, toolk
 		source, err := projectPath(appRoot, paths[0])
 		if err != nil {
 			return nil, nil, fmt.Errorf("resource source: %w", err)
+		}
+		if isIgnoredProjectPath(appRoot, source, ignore) {
+			continue
 		}
 		info, err := os.Stat(source)
 		if err != nil {
@@ -256,7 +266,7 @@ func validateResourceOutput(output string) error {
 	return nil
 }
 
-func copyResources(resources []resolvedResource, outputRoot string) (int, error) {
+func copyResources(resources []resolvedResource, outputRoot, appRoot string, ignore []*regexp.Regexp) (int, error) {
 	resourceRoot := filepath.Join(outputRoot, "resources")
 	written := make(map[string]string)
 	count := 0
@@ -275,6 +285,12 @@ func copyResources(resources []resolvedResource, outputRoot string) (int, error)
 					return walkErr
 				}
 				if entry.Type()&os.ModeSymlink != 0 {
+					if entry.IsDir() {
+						return filepath.SkipDir
+					}
+					return nil
+				}
+				if isIgnoredProjectPath(appRoot, sourcePath, ignore) {
 					if entry.IsDir() {
 						return filepath.SkipDir
 					}

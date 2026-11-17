@@ -24,7 +24,7 @@ Die Implementierung startet mit einem kleinen, durch Tests abgesicherten vertika
 6. **Projektmodell erweitern** (`docs/06-projektmodell.md`): `workspace.json`, Ext-SDK-Version und transitive Package-Classpaths.
 7. **Watch-Preview-Server** (`docs/07-watch-preview.md`): Go-Build lokal ausliefern, Quellen beobachten und Browser bei erfolgreichem Neubau aktualisieren.
 8. **JavaScript-Parsing erweitern** (`docs/08-javascript-parser.md`): Lexer/Parser und eng begrenzte Sencha-kompatible Quelltransformationen ausbauen.
-9. **Abhängigkeitssemantik** (`docs/09-abhaengigkeiten.md`): dynamische Anforderungen und Framework-Klassen ergänzen.
+9. **Abhängigkeitssemantik** (`docs/09-abhaengigkeiten.md`): dynamische Anforderungen, Loader-Pfade und Framework-Klassen ergänzen.
 10. **Sencha-spezifische Transformationen** (`docs/10-transformationen.md`): Präprozessoren, Makros und Framework-Konventionen implementieren.
 11. **Assets und Build-Ausgabe** (`docs/11-assets-und-ausgabe.md`): zusätzliche JS-, CSS- und Resource-Einträge aus `app.json` deterministisch ausgeben und über die Preview ausliefern.
 12. **Minifizierung und Source Maps** (`docs/12-minifizierung.md`): optionale token-aware Minifizierung und token-/spaltenbasierte Source Maps; Sencha-kompatible Optimierungen weiter ergänzen.

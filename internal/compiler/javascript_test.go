@@ -190,6 +190,28 @@ func TestParseAlternateClassNames(t *testing.T) {
 	}
 }
 
+func TestParseLoaderPathMappings(t *testing.T) {
+	source := `
+Ext.Loader.setPath('Example.dashboard', './dashboard');
+Ext.Loader.setPath({
+    'Example.lazy': './lazy',
+    'Example.other': './other'
+});
+`
+	mappings, err := parseLoaderPaths(source)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []loaderPathMapping{
+		{Namespace: "Example.dashboard", Path: "./dashboard"},
+		{Namespace: "Example.lazy", Path: "./lazy"},
+		{Namespace: "Example.other", Path: "./other"},
+	}
+	if !reflect.DeepEqual(mappings, want) {
+		t.Fatalf("loader mappings = %#v, want %#v", mappings, want)
+	}
+}
+
 func TestParseExtDefineFactoryFunction(t *testing.T) {
 	source := `
 Ext.define('Example.draw.AnimationParser', function () {

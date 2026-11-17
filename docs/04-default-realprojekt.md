@@ -15,7 +15,9 @@ Das zugehörige `workspace.json` nennt aktuell Ext JS **8.0.0.43** und passt dam
 - `app.json.locale` expandiert locale-spezifische Package-Overrides; der Classic-Build nimmt damit die deutschen Ext-Locale-Dateien aus dem SDK auf.
 - Statische `mixins`-Arrays und -Objekte bilden Abhängigkeiten; dadurch steht `ControllerTools.js` vor `Controller.js` im Bundle.
 - Classpath-Priorität entscheidet zwischen Toolkit- und gemeinsamen Klassen. Bei Backup-Dateien mit doppelten Klassennamen wird ein eindeutiger kanonischer Dateiname wie `Store.js` bevorzugt.
+- `app.json.ignore`-Muster werden auf die App-Quell- und Asset-Pfade angewendet.
 - Nicht gefundene App-Klassen werden als Warnungen ausgegeben, da sie über dynamische Loader-Pfade nachgeladen werden können.
+- Vorhandene, statisch gemappte `Ext.Loader.setPath`-Verzeichnisse werden zusätzlich durchsucht; externe Serverpfade bleiben dynamisch.
 
 ## Go-Builds
 
