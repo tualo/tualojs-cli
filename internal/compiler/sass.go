@@ -8,6 +8,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"regexp"
+	"sort"
 	"strconv"
 	"strings"
 )
@@ -16,6 +17,8 @@ var sassImportDirective = regexp.MustCompile(`(?m)^[\t ]*@(import|use|forward)[\
 var sassImportPath = regexp.MustCompile(`["']([^"']+)["']`)
 var sassVariableDeclaration = regexp.MustCompile(`(?m)^[\t ]*\$([a-zA-Z_][a-zA-Z0-9_-]*)[\t ]*:`)
 var sassVariableReference = regexp.MustCompile(`\$([a-zA-Z_][a-zA-Z0-9_-]*)`)
+var sassMixinDefinition = regexp.MustCompile(`(?m)^[\t ]*@mixin[\t ]+([a-zA-Z_-][a-zA-Z0-9_-]*)`)
+var sassMixinInclude = regexp.MustCompile(`@include[\t ]+([a-zA-Z_-][a-zA-Z0-9_-]*)`)
 var fashionDynamicVariable = regexp.MustCompile(`^([\t ]*\$[a-zA-Z_][a-zA-Z0-9_-]*[\t ]*:[\t ]*)dynamic\([\t ]*(#[0-9a-fA-F]{3,8}|[-+]?(?:[0-9]+(?:\.[0-9]*)?|\.[0-9]+)(?:[a-zA-Z%]+)?|[a-zA-Z_-][a-zA-Z0-9_-]*|\$[a-zA-Z_][a-zA-Z0-9_-]*|"(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*')[\t ]*\)([\t ]*;[\t ]*(?://.*)?)?$`)
 
 func resolveClassSassSources(appRoot string, sourceRoots []string, ignore []*regexp.Regexp) ([]string, error) {
@@ -370,6 +373,9 @@ func unsupportedPackageSassVariableSource(source []byte, definitions, available 
 	if reason := unsupportedFashionSource(source); reason != "" {
 		return reason
 	}
+	if len(sassMixinInclude.FindAllSubmatch(source, -1)) > 0 {
+		return "Package Sass var mixin includes are not supported"
+	}
 	for _, marker := range []string{"@import", "@use", "@forward", "url(", "#{"} {
 		if bytes.Contains(source, []byte(marker)) {
 			return "package Sass var uses imports, interpolation or resource URLs not covered by this step"
@@ -448,6 +454,45 @@ func resolvePackageClassSassSources(appRoot string, roots []packageSassSourceRoo
 		}
 	}
 	return uniquePaths(sources), uniquePaths(watchPaths), warnings, nil
+}
+
+func collectSassMixinNames(sources []string) (map[string]bool, error) {
+	names := make(map[string]bool)
+	for _, source := range uniquePaths(sources) {
+		data, err := os.ReadFile(source)
+		if err != nil {
+			return nil, fmt.Errorf("read Sass mixin source %s: %w", source, err)
+		}
+		for _, match := range sassMixinDefinition.FindAllSubmatch(data, -1) {
+			names[string(match[1])] = true
+		}
+	}
+	return names, nil
+}
+
+func filterSassSourcesByMixins(sources []string, mixins map[string]bool) ([]string, []string, error) {
+	var included []string
+	var warnings []string
+	for _, source := range sources {
+		data, err := os.ReadFile(source)
+		if err != nil {
+			return nil, nil, fmt.Errorf("read Sass source %s: %w", source, err)
+		}
+		var missing []string
+		for _, match := range sassMixinInclude.FindAllSubmatch(data, -1) {
+			name := string(match[1])
+			if !mixins[name] {
+				missing = append(missing, name)
+			}
+		}
+		if len(missing) > 0 {
+			sort.Strings(missing)
+			warnings = append(warnings, fmt.Sprintf("skipped Fashion-dependent Sass source %s: mixins not found in loaded Sass sources: %s", source, strings.Join(uniqueStrings(missing), ", ")))
+			continue
+		}
+		included = append(included, source)
+	}
+	return included, warnings, nil
 }
 
 func unsupportedPackageSassSource(source []byte, availableVariables map[string]bool) string {
@@ -799,11 +844,6 @@ func normalizeFashionDynamic(source []byte) ([]byte, bool, string) {
 func unsupportedFashionSource(source []byte) string {
 	if _, _, reason := normalizeFashionDynamic(source); reason != "" {
 		return reason
-	}
-	for _, line := range strings.Split(string(source), "\n") {
-		if strings.HasPrefix(strings.TrimSpace(line), "@include") {
-			return "Sass mixins are not loaded without the Sencha Fashion theme context"
-		}
 	}
 	return ""
 }

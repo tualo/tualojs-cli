@@ -225,6 +225,15 @@ func BuildWithTargetOptions(appDir, outputDir, selectedToolkit, selectedPlatform
 	if err != nil {
 		return BuildResult{}, err
 	}
+	sassMixinSources := append(append([]string{}, sassSources...), sassImportWatchPaths...)
+	sassMixins, err := collectSassMixinNames(sassMixinSources)
+	if err != nil {
+		return BuildResult{}, err
+	}
+	sassSources, sassMixinWarnings, err := filterSassSourcesByMixins(sassSources, sassMixins)
+	if err != nil {
+		return BuildResult{}, err
+	}
 	runtimePath, err := frameworkRuntimePath(config, appPackages.sdkRoot, toolkit)
 	if err != nil {
 		return BuildResult{}, err
@@ -348,6 +357,7 @@ func BuildWithTargetOptions(appDir, outputDir, selectedToolkit, selectedPlatform
 	warnings = append(warnings, packageSassEtcWarnings...)
 	warnings = append(warnings, packageSassVarWarnings...)
 	warnings = append(warnings, packageSassWarnings...)
+	warnings = append(warnings, sassMixinWarnings...)
 	orderedPaths := make(map[string]bool, len(ordered))
 	for _, source := range ordered {
 		orderedPaths[source.path] = true

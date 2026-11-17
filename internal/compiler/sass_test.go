@@ -132,7 +132,7 @@ func TestBuildLoadsPackageSassEtcAndLocalImports(t *testing.T) {
 		"sdk/packages/core/sass/etc/all.scss":          "$prefix: dynamic('x-');\n@import \"mixins\";\n",
 		"sdk/packages/core/sass/etc/_mixins.scss":      `@mixin unused-package-mixin { color: red; }`,
 		"sdk/packages/widget-lib/src/Widget.js":        `Ext.define('Lib.Widget', {});`,
-		"sdk/packages/widget-lib/sass/src/Widget.scss": `.#{$prefix}widget { color: #246; }`,
+		"sdk/packages/widget-lib/sass/src/Widget.scss": `.#{$prefix}widget { @include unused-package-mixin; color: #246; }`,
 		"app.js":       `Ext.application({name: 'Example'}); Ext.require('Lib.Widget');`,
 		"app/Empty.js": "",
 	})
@@ -148,7 +148,7 @@ func TestBuildLoadsPackageSassEtcAndLocalImports(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(string(css), ".x-widget") || !strings.Contains(string(css), "color: #246") {
+	if !strings.Contains(string(css), ".x-widget") || !strings.Contains(string(css), "color: red") || !strings.Contains(string(css), "color: #246") {
 		t.Fatalf("compiled package Sass = %s", css)
 	}
 	for _, path := range []string{
@@ -218,6 +218,26 @@ func TestBuildLoadsFrameworkPackageClassSass(t *testing.T) {
 		if !found {
 			t.Errorf("framework Sass path %s is missing from watch paths", path)
 		}
+	}
+}
+
+func TestFilterSassSourcesByMixinsSkipsUnknownMixin(t *testing.T) {
+	root := makeFixture(t, map[string]string{
+		"app/Known.scss":   `.known { @include color-mixin; }`,
+		"app/Unknown.scss": `.unknown { @include extjs-button-small-ui; }`,
+	})
+	known := filepath.Join(root, "app", "Known.scss")
+	unknown := filepath.Join(root, "app", "Unknown.scss")
+
+	sources, warnings, err := filterSassSourcesByMixins([]string{known, unknown}, map[string]bool{"color-mixin": true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(sources, []string{known}) {
+		t.Fatalf("Sass sources = %#v, want only known-mixin source", sources)
+	}
+	if len(warnings) != 1 || !strings.Contains(warnings[0], "extjs-button-small-ui") {
+		t.Fatalf("Sass warnings = %#v, want unknown Fashion mixin warning", warnings)
 	}
 }
 

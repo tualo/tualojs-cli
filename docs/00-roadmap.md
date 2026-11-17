@@ -33,6 +33,7 @@ Die Implementierung startet mit einem kleinen, durch Tests abgesicherten vertika
 15. **Fashion-Variablenreferenzen** (`docs/15-fashion-variablen.md`): einfache `dynamic($variable)`-Zuweisungen in Sass-Variablen normalisieren und deren Package-Dateien dependency-geordnet laden.
 16. **Package-Sass-`etc`** (`docs/16-package-sass-etc.md`): `sencha.sass.etc`-Einstiegsdateien und unterstützte lokale Imports in den Sass-Kontext aufnehmen.
 17. **Framework-Class-SCSS** (`docs/17-framework-sass-src.md`): `sass.src`-Quellen der toolkit- und core-spezifischen Framework-Packages in die Stylesheet-Pipeline aufnehmen.
+18. **Package-Sass-Mixins** (`docs/18-package-sass-mixins.md`): `@include`-Aufrufe zulassen, wenn das Mixin in den geladenen Package-Sass-Quellen definiert ist.
 
 ## Architekturleitplanken
 
