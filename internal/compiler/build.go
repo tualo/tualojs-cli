@@ -155,10 +155,6 @@ func BuildWithTargetOptions(appDir, outputDir, selectedToolkit, selectedPlatform
 	if err != nil {
 		return BuildResult{}, err
 	}
-	appEtcVariables, err := collectSassVariableNames(appSassEtc)
-	if err != nil {
-		return BuildResult{}, err
-	}
 	sassRoots := append(append([]string{}, config.Classpath...), config.Overrides...)
 	classSassSources, err := resolveClassSassSources(root, sassRoots, ignorePatterns)
 	if err != nil {
@@ -194,7 +190,18 @@ func BuildWithTargetOptions(appDir, outputDir, selectedToolkit, selectedPlatform
 			return BuildResult{}, fmt.Errorf("resolve framework toolkit classes: %w", err)
 		}
 	}
-	packageSassVarSources, packageSassVarWatchPaths, packageSassVariables, packageSassVarWarnings, err := resolvePackageSassVariables(root, appPackages.sassVarRoots, appEtcVariables, ignorePatterns)
+	packageSassEtcRoots := append(append([]packageSassEtcRoot{}, appPackages.sassEtcRoots...), frameworkPackages.sassEtcRoots...)
+	packageSassEtcSources, packageThemeSassEtcSources, packageSassEtcWatchPaths, packageSassEtcWarnings, err := resolvePackageSassEtcSources(root, packageSassEtcRoots, ignorePatterns)
+	if err != nil {
+		return BuildResult{}, err
+	}
+	etcSassSources := append(append(append([]string{}, appSassEtc...), packageSassEtcSources...), packageThemeSassEtcSources...)
+	appEtcVariables, err := collectSassVariableNames(etcSassSources)
+	if err != nil {
+		return BuildResult{}, err
+	}
+	packageSassVarRoots := uniquePaths(append(append([]string{}, appPackages.sassVarRoots...), frameworkPackages.sassVarRoots...))
+	packageSassVarSources, packageSassVarWatchPaths, packageSassVariables, packageSassVarWarnings, err := resolvePackageSassVariables(root, packageSassVarRoots, appEtcVariables, ignorePatterns)
 	if err != nil {
 		return BuildResult{}, err
 	}
@@ -205,11 +212,12 @@ func BuildWithTargetOptions(appDir, outputDir, selectedToolkit, selectedPlatform
 	for name := range appVarVariables {
 		packageSassVariables[name] = true
 	}
-	packageSassSources, packageSassWatchPaths, packageSassWarnings, err := resolvePackageClassSassSources(root, appPackages.sassRoots, packageSassVariables, ignorePatterns)
+	packageSassRoots := uniquePackageSassSourceRoots(append(append([]packageSassSourceRoot{}, appPackages.sassRoots...), frameworkPackages.sassRoots...))
+	packageSassSources, packageSassWatchPaths, packageSassWarnings, err := resolvePackageClassSassSources(root, packageSassRoots, packageSassVariables, ignorePatterns)
 	if err != nil {
 		return BuildResult{}, err
 	}
-	sassSources := uniquePaths(append(append(append(append(append(appSassEtc, packageSassVarSources...), appSassVar...), packageSassSources...), appSassSrc...), classSassSources...))
+	sassSources := uniquePaths(append(append(append(append(append(append(append(appSassEtc, packageSassEtcSources...), packageSassVarSources...), packageThemeSassEtcSources...), appSassVar...), packageSassSources...), appSassSrc...), classSassSources...))
 	if len(sassSources) > 0 && toolkit == "" {
 		return BuildResult{}, fmt.Errorf("Sass compilation requires a selected toolkit; pass -toolkit classic or -toolkit modern")
 	}
@@ -292,6 +300,7 @@ func BuildWithTargetOptions(appDir, outputDir, selectedToolkit, selectedPlatform
 	watchPaths = append(watchPaths, styleWatchPaths...)
 	watchPaths = append(watchPaths, scriptWatchPaths...)
 	watchPaths = append(watchPaths, sassSources...)
+	watchPaths = append(watchPaths, packageSassEtcWatchPaths...)
 	watchPaths = append(watchPaths, packageSassVarWatchPaths...)
 	watchPaths = append(watchPaths, packageSassWatchPaths...)
 	watchPaths = append(watchPaths, sassImportWatchPaths...)
@@ -335,6 +344,8 @@ func BuildWithTargetOptions(appDir, outputDir, selectedToolkit, selectedPlatform
 		return BuildResult{}, err
 	}
 	warnings = append(warnings, appPackages.sassWarnings...)
+	warnings = append(warnings, frameworkPackages.sassWarnings...)
+	warnings = append(warnings, packageSassEtcWarnings...)
 	warnings = append(warnings, packageSassVarWarnings...)
 	warnings = append(warnings, packageSassWarnings...)
 	orderedPaths := make(map[string]bool, len(ordered))

@@ -31,6 +31,8 @@ Die Implementierung startet mit einem kleinen, durch Tests abgesicherten vertika
 13. **Kompatibilitätsausbau** (`docs/13-kompatibilitaet.md`): weitere App-, Workspace-, Paket-, Theme- und Produktions-Build-Fälle ergänzen.
 14. **Theme-Package-Abhängigkeiten** (`docs/14-theme-packages.md`): das ausgewählte Theme-Package und seine transitiven SDK-Package-Abhängigkeiten in den Build aufnehmen.
 15. **Fashion-Variablenreferenzen** (`docs/15-fashion-variablen.md`): einfache `dynamic($variable)`-Zuweisungen in Sass-Variablen normalisieren und deren Package-Dateien dependency-geordnet laden.
+16. **Package-Sass-`etc`** (`docs/16-package-sass-etc.md`): `sencha.sass.etc`-Einstiegsdateien und unterstützte lokale Imports in den Sass-Kontext aufnehmen.
+17. **Framework-Class-SCSS** (`docs/17-framework-sass-src.md`): `sass.src`-Quellen der toolkit- und core-spezifischen Framework-Packages in die Stylesheet-Pipeline aufnehmen.
 
 ## Architekturleitplanken
 

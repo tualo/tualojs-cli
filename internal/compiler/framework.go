@@ -22,6 +22,7 @@ type classSourcePath struct {
 type packageResolution struct {
 	classpaths   []classSourcePath
 	overrides    []classSourcePath
+	sassEtcRoots []packageSassEtcRoot
 	sassRoots    []packageSassSourceRoot
 	sassVarRoots []string
 	sassWarnings []string
@@ -59,9 +60,15 @@ type packageSassSourceRoot struct {
 	Package   string
 }
 
+type packageSassEtcRoot struct {
+	Path  string
+	Theme bool
+}
+
 type packageManifest struct {
 	Version       string            `json:"version"`
 	Name          string            `json:"name"`
+	Type          string            `json:"type"`
 	Toolkit       string            `json:"toolkit"`
 	Extend        string            `json:"extend"`
 	AlternateName pathList          `json:"alternateName"`
@@ -71,6 +78,7 @@ type packageManifest struct {
 	Sass          packageSassConfig `json:"sass"`
 	Sencha        struct {
 		Name          string            `json:"name"`
+		Type          string            `json:"type"`
 		Toolkit       string            `json:"toolkit"`
 		Extend        string            `json:"extend"`
 		AlternateName pathList          `json:"alternateName"`
@@ -224,10 +232,20 @@ func resolveAppPackagesWithOptional(appRoot string, required, optional []string,
 		if err != nil {
 			return packageResolution{}, err
 		}
+		sassEtcRoots, err := expandPackagePaths(pkg, pkg.manifest.Sencha.Sass.Etc, toolkit, locale)
+		if err != nil {
+			return packageResolution{}, err
+		}
 		resolution.classpaths = append(resolution.classpaths, classpath...)
 		resolution.overrides = append(resolution.overrides, overrides...)
 		resolution.sassRoots = append(resolution.sassRoots, sassRoots...)
 		resolution.sassWarnings = append(resolution.sassWarnings, sassWarnings...)
+		for _, sassEtcRoot := range sassEtcRoots {
+			if !isPathWithin(sassEtcRoot.path, pkg.root) {
+				return packageResolution{}, fmt.Errorf("package %q Sass etc path escapes package directory", pkg.manifest.Sencha.Name)
+			}
+			resolution.sassEtcRoots = append(resolution.sassEtcRoots, packageSassEtcRoot{Path: sassEtcRoot.path, Theme: pkg.manifest.Sencha.Type == "theme"})
+		}
 		for _, sassVarRoot := range sassVarRoots {
 			if !isPathWithin(sassVarRoot.path, pkg.root) {
 				return packageResolution{}, fmt.Errorf("package %q Sass var path escapes package directory", pkg.manifest.Sencha.Name)
@@ -346,6 +364,9 @@ func indexSDKPackages(sdkRoot, toolkit string) (map[string]*sdkPackage, error) {
 			}
 			if manifest.Sencha.Toolkit == "" {
 				manifest.Sencha.Toolkit = manifest.Toolkit
+			}
+			if manifest.Sencha.Type == "" {
+				manifest.Sencha.Type = manifest.Type
 			}
 			if manifest.Sencha.Extend == "" {
 				manifest.Sencha.Extend = manifest.Extend

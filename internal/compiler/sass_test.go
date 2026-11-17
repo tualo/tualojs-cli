@@ -113,6 +113,114 @@ func TestDartSassCompilesDynamicPackageVariableReferences(t *testing.T) {
 	}
 }
 
+func TestBuildLoadsPackageSassEtcAndLocalImports(t *testing.T) {
+	binary := os.Getenv("SASS")
+	if binary == "" {
+		binary = "sass"
+	}
+	if _, err := exec.LookPath(binary); err != nil {
+		t.Skip("Dart Sass is not installed")
+	}
+
+	root := makeFixture(t, map[string]string{
+		"app.json":                                     `{"name":"Example","namespace":"Example","toolkit":"classic","requires":["widget-lib"],"classpath":["app"],"js":[{"path":"app.js","bundle":true}]}`,
+		"workspace.json":                               `{"frameworks":{"ext":{"path":"sdk","version":"8.0.0.43"}}}`,
+		"sdk/package.json":                             `{"name":"ext","version":"8.0.0.43","compatVersion":"8.0.0"}`,
+		"sdk/packages/core/package.json":               `{"version":"8.0.0.43","sencha":{"name":"core","classpath":"${package.dir}/src","sass":{"etc":"${package.dir}/sass/etc/all.scss"}}}`,
+		"sdk/packages/widget-lib/package.json":         `{"version":"1.0.0","sencha":{"name":"widget-lib","requires":["core"],"classpath":"${package.dir}/src","sass":{"src":"${package.dir}/sass/src"}}}`,
+		"sdk/classic/classic/package.json":             `{"version":"8.0.0.43","sencha":{"name":"classic","requires":["core"],"classpath":"${package.dir}/src"}}`,
+		"sdk/packages/core/sass/etc/all.scss":          "$prefix: dynamic('x-');\n@import \"mixins\";\n",
+		"sdk/packages/core/sass/etc/_mixins.scss":      `@mixin unused-package-mixin { color: red; }`,
+		"sdk/packages/widget-lib/src/Widget.js":        `Ext.define('Lib.Widget', {});`,
+		"sdk/packages/widget-lib/sass/src/Widget.scss": `.#{$prefix}widget { color: #246; }`,
+		"app.js":       `Ext.application({name: 'Example'}); Ext.require('Lib.Widget');`,
+		"app/Empty.js": "",
+	})
+
+	result, err := BuildWithToolkit(root, "out", "classic")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(result.StyleSheets) != 1 {
+		t.Fatalf("generated stylesheets = %#v, want one package Sass stylesheet", result.StyleSheets)
+	}
+	css, err := os.ReadFile(result.StyleSheets[0].Path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(css), ".x-widget") || !strings.Contains(string(css), "color: #246") {
+		t.Fatalf("compiled package Sass = %s", css)
+	}
+	for _, path := range []string{
+		filepath.Join(root, "sdk", "packages", "core", "sass", "etc", "all.scss"),
+		filepath.Join(root, "sdk", "packages", "core", "sass", "etc", "_mixins.scss"),
+	} {
+		found := false
+		for _, watchPath := range result.WatchPaths {
+			if watchPath == path {
+				found = true
+				break
+			}
+		}
+		if !found {
+			t.Errorf("package Sass etc path %s is missing from watch paths", path)
+		}
+	}
+}
+
+func TestBuildLoadsFrameworkPackageClassSass(t *testing.T) {
+	binary := os.Getenv("SASS")
+	if binary == "" {
+		binary = "sass"
+	}
+	if _, err := exec.LookPath(binary); err != nil {
+		t.Skip("Dart Sass is not installed")
+	}
+
+	root := makeFixture(t, map[string]string{
+		"app.json":                              `{"name":"Example","namespace":"Example","toolkit":"classic","classpath":["app"],"js":[{"path":"app.js","bundle":true}]}`,
+		"workspace.json":                        `{"frameworks":{"ext":{"path":"sdk","version":"8.0.0.43"}}}`,
+		"sdk/package.json":                      `{"name":"ext","version":"8.0.0.43","compatVersion":"8.0.0"}`,
+		"sdk/packages/core/package.json":        `{"version":"8.0.0.43","sencha":{"name":"core","classpath":"${package.dir}/src","sass":{"etc":"${package.dir}/sass/etc/all.scss","src":"${package.dir}/sass/src"}}}`,
+		"sdk/classic/classic/package.json":      `{"version":"8.0.0.43","sencha":{"name":"classic","requires":["core"],"classpath":"${package.dir}/src"}}`,
+		"sdk/packages/core/sass/etc/all.scss":   "$prefix: dynamic('x-');",
+		"sdk/packages/core/src/Panel.js":        `Ext.define('Ext.Panel', {});`,
+		"sdk/packages/core/sass/src/Panel.scss": `.#{$prefix}framework-panel { color: #246; }`,
+		"app.js":                                `Ext.application({name: 'Example'});`,
+		"app/Empty.js":                          "",
+	})
+
+	result, err := BuildWithToolkit(root, "out", "classic")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(result.StyleSheets) != 1 {
+		t.Fatalf("generated stylesheets = %#v, want framework package Sass stylesheet", result.StyleSheets)
+	}
+	css, err := os.ReadFile(result.StyleSheets[0].Path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(css), ".x-framework-panel") || !strings.Contains(string(css), "color: #246") {
+		t.Fatalf("compiled framework Sass = %s", css)
+	}
+	for _, path := range []string{
+		filepath.Join(root, "sdk", "packages", "core", "sass", "etc", "all.scss"),
+		filepath.Join(root, "sdk", "packages", "core", "sass", "src", "Panel.scss"),
+	} {
+		found := false
+		for _, watchPath := range result.WatchPaths {
+			if watchPath == path {
+				found = true
+				break
+			}
+		}
+		if !found {
+			t.Errorf("framework Sass path %s is missing from watch paths", path)
+		}
+	}
+}
+
 func TestResolveSassImportWatchPaths(t *testing.T) {
 	root := makeFixture(t, map[string]string{
 		"app/Main.scss": `@use "theme/colors";

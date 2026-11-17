@@ -155,6 +155,92 @@ func expandPackageClassSassRoots(pkg *sdkPackage, toolkit, locale string) ([]pac
 	return roots, warnings, nil
 }
 
+func uniquePackageSassSourceRoots(roots []packageSassSourceRoot) []packageSassSourceRoot {
+	seen := make(map[string]bool, len(roots))
+	unique := make([]packageSassSourceRoot, 0, len(roots))
+	for _, root := range roots {
+		key := filepath.Clean(root.SassPath) + "\x00" + filepath.Clean(root.ClassPath)
+		if seen[key] {
+			continue
+		}
+		seen[key] = true
+		unique = append(unique, root)
+	}
+	return unique
+}
+
+func resolvePackageSassEtcSources(appRoot string, roots []packageSassEtcRoot, ignore []*regexp.Regexp) ([]string, []string, []string, []string, error) {
+	var sources []string
+	var themeSources []string
+	var watchPaths []string
+	var warnings []string
+	seen := make(map[string]bool)
+	addSource := func(path string, theme bool) error {
+		absolute, err := filepath.Abs(path)
+		if err != nil {
+			return err
+		}
+		if seen[absolute] {
+			return nil
+		}
+		seen[absolute] = true
+		watchPaths = append(watchPaths, absolute)
+		if theme {
+			data, err := os.ReadFile(absolute)
+			if err != nil {
+				return fmt.Errorf("read package theme Sass etc source %s: %w", absolute, err)
+			}
+			if len(sassImportDirective.FindAllSubmatch(data, -1)) > 0 {
+				warnings = append(warnings, fmt.Sprintf("skipped theme Sass etc source %s: imported Fashion context is not available", absolute))
+				return nil
+			}
+		}
+		if theme {
+			themeSources = append(themeSources, absolute)
+		} else {
+			sources = append(sources, absolute)
+		}
+		return nil
+	}
+	for _, packageRoot := range roots {
+		root := packageRoot.Path
+		info, err := os.Stat(root)
+		if err != nil {
+			if os.IsNotExist(err) {
+				continue
+			}
+			return nil, nil, nil, nil, fmt.Errorf("stat package Sass etc path %s: %w", root, err)
+		}
+		if !info.IsDir() {
+			if strings.EqualFold(filepath.Ext(root), ".scss") && !isIgnoredProjectPath(appRoot, root, ignore) {
+				if err := addSource(root, packageRoot.Theme); err != nil {
+					return nil, nil, nil, nil, fmt.Errorf("resolve package Sass etc source %s: %w", root, err)
+				}
+			}
+			continue
+		}
+		err = filepath.WalkDir(root, func(path string, entry fs.DirEntry, walkErr error) error {
+			if walkErr != nil {
+				return walkErr
+			}
+			if entry.IsDir() {
+				if path != root && isIgnoredProjectPath(appRoot, path, ignore) {
+					return filepath.SkipDir
+				}
+				return nil
+			}
+			if strings.HasPrefix(entry.Name(), "_") || !strings.EqualFold(filepath.Ext(path), ".scss") || isIgnoredProjectPath(appRoot, path, ignore) {
+				return nil
+			}
+			return addSource(path, packageRoot.Theme)
+		})
+		if err != nil {
+			return nil, nil, nil, nil, fmt.Errorf("scan package Sass etc path %s: %w", root, err)
+		}
+	}
+	return uniquePaths(sources), uniquePaths(themeSources), uniquePaths(watchPaths), warnings, nil
+}
+
 func resolvePackageSassVariables(appRoot string, roots []string, initialVariables map[string]bool, ignore []*regexp.Regexp) ([]string, []string, map[string]bool, []string, error) {
 	available := make(map[string]bool, len(initialVariables))
 	for name := range initialVariables {
@@ -437,13 +523,125 @@ func sassImportPaths(source []byte) []string {
 		}
 		for _, match := range sassImportPath.FindAllStringSubmatch(value, -1) {
 			path := strings.TrimSpace(match[1])
-			if path == "" || strings.HasPrefix(path, "sass:") || strings.Contains(path, "://") || strings.HasSuffix(strings.ToLower(path), ".css") {
+			if path == "" || strings.HasPrefix(path, "sass:") || strings.Contains(path, "://") || strings.HasSuffix(strings.ToLower(path), ".css") || strings.HasSuffix(strings.ToLower(path), ".js") {
 				continue
 			}
 			paths = append(paths, path)
 		}
 	}
 	return paths
+}
+
+func inspectSassImportTree(appRoot, source string, visited map[string]bool) (bool, []string, error) {
+	absolute, err := filepath.Abs(source)
+	if err != nil {
+		return false, nil, err
+	}
+	if visited[absolute] {
+		return false, nil, nil
+	}
+	visited[absolute] = true
+	data, err := os.ReadFile(absolute)
+	if err != nil {
+		return false, nil, fmt.Errorf("read Sass import source %s: %w", absolute, err)
+	}
+	var imports []string
+	for _, directive := range sassImportDirective.FindAllSubmatch(data, -1) {
+		value := string(directive[2])
+		if strings.Contains(value, "url(") {
+			continue
+		}
+		for _, match := range sassImportPath.FindAllStringSubmatch(value, -1) {
+			importPath := strings.TrimSpace(match[1])
+			if strings.HasSuffix(strings.ToLower(importPath), ".js") {
+				return true, nil, nil
+			}
+			if importPath == "" || strings.HasPrefix(importPath, "sass:") || strings.Contains(importPath, "://") || strings.HasSuffix(strings.ToLower(importPath), ".css") {
+				continue
+			}
+			dependency, exists, err := resolveSassImport(appRoot, absolute, importPath)
+			if err != nil {
+				return false, nil, err
+			}
+			if !exists {
+				return true, uniquePaths(imports), nil
+			}
+			unsupported, nested, err := inspectSassImportTree(appRoot, dependency, visited)
+			if err != nil {
+				return false, nil, err
+			}
+			nestedImports := append([]string{dependency}, nested...)
+			if unsupported {
+				return true, uniquePaths(append(imports, nestedImports...)), nil
+			}
+			imports = append(imports, nestedImports...)
+		}
+	}
+	return false, uniquePaths(imports), nil
+}
+
+func inlineSassImports(appRoot, importer string, source []byte) ([]byte, []string, error) {
+	text := string(source)
+	matches := sassImportDirective.FindAllStringIndex(text, -1)
+	if len(matches) == 0 {
+		return source, nil, nil
+	}
+	var output strings.Builder
+	var warnings []string
+	previous := 0
+	for _, match := range matches {
+		output.WriteString(text[previous:match[0]])
+		directive := text[match[0]:match[1]]
+		dropDirective := false
+		if !strings.Contains(directive, "url(") {
+			rewriteErr := error(nil)
+			directive = sassImportPath.ReplaceAllStringFunc(directive, func(literal string) string {
+				if len(literal) < 2 {
+					return literal
+				}
+				quote := literal[:1]
+				path := literal[1 : len(literal)-1]
+				if path == "" || strings.HasPrefix(path, "sass:") || strings.Contains(path, "://") || strings.HasSuffix(strings.ToLower(path), ".css") || filepath.IsAbs(filepath.FromSlash(path)) {
+					return literal
+				}
+				if strings.HasSuffix(strings.ToLower(path), ".js") {
+					dropDirective = true
+					warnings = append(warnings, fmt.Sprintf("skipped Fashion JavaScript import %q in Sass source %s", path, importer))
+					return literal
+				}
+				resolved, exists, err := resolveSassImport(appRoot, importer, path)
+				if err != nil {
+					rewriteErr = err
+					return literal
+				}
+				if !exists {
+					dropDirective = true
+					warnings = append(warnings, fmt.Sprintf("skipped unresolved Sass import %q in %s", path, importer))
+					return literal
+				}
+				unsupported, _, err := inspectSassImportTree(appRoot, resolved, make(map[string]bool))
+				if err != nil {
+					rewriteErr = err
+					return literal
+				}
+				if unsupported {
+					dropDirective = true
+					warnings = append(warnings, fmt.Sprintf("skipped unsupported Sass import %q in %s", path, importer))
+					return literal
+				}
+				return quote + filepath.ToSlash(resolved) + quote
+			})
+			if rewriteErr != nil {
+				return nil, warnings, rewriteErr
+			}
+		}
+		if !dropDirective {
+			output.WriteString(directive)
+		}
+		previous = match[1]
+	}
+	output.WriteString(text[previous:])
+	return []byte(output.String()), warnings, nil
 }
 
 func resolveSassImport(appRoot, importer, importPath string) (string, bool, error) {
@@ -455,12 +653,15 @@ func resolveSassImport(appRoot, importer, importPath string) (string, bool, erro
 			if err != nil {
 				return "", false, err
 			}
-			if !isPathWithin(absolute, appRoot) {
+			if isPathWithin(importer, appRoot) && !isPathWithin(absolute, appRoot) {
 				continue
 			}
 			info, err := os.Stat(absolute)
 			if err != nil {
 				if os.IsNotExist(err) {
+					continue
+				}
+				if parent, parentErr := os.Stat(filepath.Dir(absolute)); parentErr == nil && !parent.IsDir() {
 					continue
 				}
 				return "", false, err
@@ -524,10 +725,12 @@ func compileClassSass(appRoot string, sources []string, minify bool) ([]byte, []
 			continue
 		}
 		if dynamicChanged {
-			if len(sassImportDirective.FindAllSubmatch(normalized, -1)) > 0 {
-				warnings = append(warnings, fmt.Sprintf("skipped Fashion-dependent Sass source %s: dynamic() normalization with imports is not supported", source))
-				continue
+			var importWarnings []string
+			normalized, importWarnings, err = inlineSassImports(appRoot, source, normalized)
+			if err != nil {
+				return nil, warnings, fmt.Errorf("normalize Sass imports in %s: %w", source, err)
 			}
+			warnings = append(warnings, importWarnings...)
 			entry.Write(normalized)
 			if len(normalized) > 0 && normalized[len(normalized)-1] != '\n' {
 				entry.WriteByte('\n')
