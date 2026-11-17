@@ -83,6 +83,31 @@ func TestResolvePackageSassVariablesOrdersForwardReferences(t *testing.T) {
 	}
 }
 
+func TestResolvePackageSassVariablesSkipsExpressionsDependingOnNull(t *testing.T) {
+	root := makeFixture(t, map[string]string{
+		"widget/sass/var/derived.scss": `$lighter-color: dynamic(darken($border-color, 10%));`,
+		"theme/sass/var/theme.scss":    `$border-color: dynamic(null);`,
+	})
+
+	sources, _, variables, warnings, err := resolvePackageSassVariables(root, []string{
+		filepath.Join(root, "widget", "sass", "var"),
+		filepath.Join(root, "theme", "sass", "var"),
+	}, nil, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	wantSources := []string{filepath.Join(root, "theme", "sass", "var", "theme.scss")}
+	if !reflect.DeepEqual(sources, wantSources) {
+		t.Fatalf("package Sass sources = %#v, want null source only %#v", sources, wantSources)
+	}
+	if !variables["border-color"] || variables["lighter-color"] {
+		t.Fatalf("available variables = %#v, want only border-color", variables)
+	}
+	if len(warnings) != 1 || !strings.Contains(warnings[0], "Fashion value is null") {
+		t.Fatalf("package Sass warnings = %#v, want null dependency warning", warnings)
+	}
+}
+
 func TestDartSassCompilesDynamicPackageVariableReferences(t *testing.T) {
 	binary := os.Getenv("SASS")
 	if binary == "" {
@@ -128,7 +153,7 @@ func TestDartSassResolvesDynamicAssignmentsInImportedPartial(t *testing.T) {
 	}
 
 	root := makeFixture(t, map[string]string{
-		"app/_theme.scss": `$theme-color: dynamic(#abc);`,
+		"app/_theme.scss": `$theme-color: dynamic(#abc)`,
 		"app/Main.scss":   `@import "theme"; .main { color: $theme-color; }`,
 	})
 	css, warnings, err := compileClassSass(root, []string{filepath.Join(root, "app", "Main.scss")}, false)
@@ -140,6 +165,38 @@ func TestDartSassResolvesDynamicAssignmentsInImportedPartial(t *testing.T) {
 	}
 	if !strings.Contains(string(css), "color: #abc") {
 		t.Fatalf("compiled CSS = %s, want imported dynamic variable resolved", css)
+	}
+}
+
+func TestDartSassCompilesFashionBoxFunctionsWithFallbackDefaults(t *testing.T) {
+	binary := os.Getenv("SASS")
+	if binary == "" {
+		binary = "sass"
+	}
+	if _, err := exec.LookPath(binary); err != nil {
+		t.Skip("Dart Sass is not installed")
+	}
+
+	root := makeFixture(t, map[string]string{
+		"sass/functions.scss": `@function top($box, $fallbackBox) {
+    @if $box == null { $box: $fallbackBox; }
+    @return nth($box, 1);
+}`,
+		"sass/Main.scss": `.main { height: top(12px); }`,
+	})
+	functions := filepath.Join(root, "sass", "functions.scss")
+	css, warnings, err := compileClassSassWithInlineImports(root, []string{
+		functions,
+		filepath.Join(root, "sass", "Main.scss"),
+	}, false, map[string]bool{functions: true}, nil, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(warnings) != 0 {
+		t.Fatalf("Sass warnings = %#v", warnings)
+	}
+	if !strings.Contains(string(css), "height: 12px") {
+		t.Fatalf("compiled CSS = %s, want fallback argument default", css)
 	}
 }
 
