@@ -547,6 +547,70 @@ func TestBuildCopiesConfiguredResources(t *testing.T) {
 	}
 }
 
+func TestBuildCompilesSCSSPairedWithClasspathJavaScript(t *testing.T) {
+	root := makeFixture(t, map[string]string{
+		"app.json":         `{"name":"Example","namespace":"Example","toolkit":"classic","classpath":["app"],"css":[{"path":"styles/base.css"}],"js":[{"path":"app.js","bundle":true}]}`,
+		"app.js":           `Ext.application({name: 'Example'});`,
+		"app/Fashion.js":   `Ext.define('Example.Fashion', {});`,
+		"app/Fashion.scss": `@include extjs-button-small-ui($ui: 'sample');`,
+		"app/Main.js":      `Ext.define('Example.Main', {});`,
+		"app/Main.scss":    `.main { border: 0px; }`,
+		"app/Orphan.scss":  `.orphan { display: none; }`,
+		"styles/base.css":  "body { color: black; }",
+	})
+
+	sassBinary := filepath.Join(t.TempDir(), "sass")
+	sassScript := `#!/bin/sh
+if [ "$1" != "--no-source-map" ] || [ "$2" != "--style=compressed" ] || [ "$3" != "--load-path" ] || [ "$5" != "--stdin" ]; then
+    echo "unexpected Sass arguments: $*" >&2
+    exit 2
+fi
+input=$(cat)
+case "$input" in
+    *'@import "app/Main.scss";'*) ;;
+    *) echo "Sass entry is missing Main.scss: $input" >&2; exit 3 ;;
+esac
+case "$input" in
+    *Fashion.scss*) echo "Sass entry should omit Fashion.scss: $input" >&2; exit 4 ;;
+esac
+printf '.main{border:0px}\n'
+`
+	if err := os.WriteFile(sassBinary, []byte(sassScript), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("SASS", sassBinary)
+
+	result, err := BuildWithOutputOptions(root, "out", "", false, BuildModeProduction, false, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got, want := len(result.StyleSheets), 2; got != want {
+		t.Fatalf("stylesheet count = %d, want %d", got, want)
+	}
+	if result.StyleSheets[0].URL != "styles/base.css" || result.StyleSheets[1].URL != "app-sass.css" {
+		t.Fatalf("stylesheet order = %#v, want configured CSS followed by generated class Sass", result.StyleSheets)
+	}
+	if result.StyleSheets[1].Path != filepath.Join(root, "out", "classic", "resources", "app-sass.css") {
+		t.Fatalf("generated Sass path = %q, want file under classic/resources", result.StyleSheets[1].Path)
+	}
+	compiled, err := os.ReadFile(result.StyleSheets[1].Path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(compiled) != ".main{border:0px}\n" {
+		t.Fatalf("generated Sass CSS = %q", compiled)
+	}
+	if len(result.Warnings) != 1 || !strings.Contains(result.Warnings[0], "Fashion-dependent Sass source") || !strings.Contains(result.Warnings[0], "Fashion.scss") {
+		t.Fatalf("Sass warnings = %#v, want one Fashion-dependent stylesheet warning", result.Warnings)
+	}
+	for _, source := range result.WatchPaths {
+		if source == filepath.Join(root, "app", "Main.scss") {
+			return
+		}
+	}
+	t.Fatal("class Sass source is missing from watcher paths")
+}
+
 func TestBuildLaterResourceEntryOverridesCollision(t *testing.T) {
 	root := makeFixture(t, map[string]string{
 		"app.json":             `{"name":"Example","namespace":"Example","classpath":["app"],"resources":[{"path":"app-resource.txt","output":"shared/Readme.md"},{"path":"package-resource.txt","output":"shared/Readme.md"}],"js":[{"path":"app.js","bundle":true}]}`,

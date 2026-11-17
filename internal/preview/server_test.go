@@ -29,6 +29,7 @@ func TestPreviewServesShellFrameworkThemeAndBundle(t *testing.T) {
 		"sdk/build/modern/theme-material/resources/theme-material-all.css": "body { color: black; }",
 		"app.js":              `Ext.application({name: 'PreviewApp', extend: 'PreviewApp.Main'});`,
 		"app/Main.js":         `Ext.define('PreviewApp.Main', { extend: 'Ext.Panel', requires: ['Ext.scroll.Scroller'] });`,
+		"app/Main.scss":       `.preview-sass { color: blue; }`,
 		"app-assets/logo.txt": "preview logo",
 		"styles/app.css":      "body { background: red; }",
 		"vendor/pre.js":       "window.preload = true;",
@@ -42,6 +43,11 @@ func TestPreviewServesShellFrameworkThemeAndBundle(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
+	sassBinary := filepath.Join(t.TempDir(), "sass")
+	if err := os.WriteFile(sassBinary, []byte("#!/bin/sh\nprintf '.preview-sass{color:blue}\\n'\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("SASS", sassBinary)
 
 	result, err := compiler.BuildWithSourceMap(root, "build-go", "modern", false, compiler.BuildModeDevelopment, true)
 	if err != nil {
@@ -80,6 +86,8 @@ func TestPreviewServesShellFrameworkThemeAndBundle(t *testing.T) {
 		{path: "/resources/shared/logo.txt", content: "preview logo"},
 		{path: "/", content: "/css/styles/app.css"},
 		{path: "/css/styles/app.css", content: "background: red"},
+		{path: "/", content: "/css/app-sass.css"},
+		{path: "/css/app-sass.css", content: ".preview-sass{color:blue}"},
 		{path: "/sdk/ext.js", content: "window.Ext"},
 		{path: "/", content: "Ext.scroll.Scroller"},
 		{path: "/sdk/classes/mixin/Factoryable.js", content: "Ext.mixin.Factoryable"},

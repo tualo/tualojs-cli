@@ -21,6 +21,7 @@ Danach die im Terminal angezeigte lokale URL öffnen. Mit `Ctrl+C` wird der Serv
 - Liefert eine Preview-Seite, das zum Toolkit passende Ext-JS-Debug-Runtime-Script aus dem konfigurierten SDK, dessen Theme-CSS, das Go-Bundle und statische App-Dateien aus.
 - Liefert kopierte `app.json.resources` unter `/resources/` aus und beobachtet Änderungen in diesen Quellpfaden.
 - Kopiert und verlinkt lokale statische CSS-Einträge aus `app.json.css`.
+- Kompiliert Standard-SCSS-Dateien neben gleichnamigen JavaScript-Klassen und lädt `app-sass.css` nach dem Theme-CSS.
 - Liefert optionale `app.js.map`-Dateien sowie ihre `sources` über `/sources/` aus.
 - Build-Optionen `-minify` und `-source-map` werden auch im Watch-Modus unterstützt.
 - Bevorzugt vorhandenes kombiniertes Sencha-App-CSS unter `build/<mode>/<app>/<toolkit>/resources` oder `build/<mode>/<app>/resources`, damit App- und Package-Styles mit angezeigt werden. Andernfalls verwendet sie das SDK-Theme-CSS; fehlt auch dieses, startet sie ohne Theme-CSS.

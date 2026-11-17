@@ -143,6 +143,14 @@ func BuildWithTargetOptions(appDir, outputDir, selectedToolkit, selectedPlatform
 	if err != nil {
 		return BuildResult{}, err
 	}
+	sassRoots := append(append([]string{}, config.Classpath...), config.Overrides...)
+	classSassSources, err := resolveClassSassSources(root, sassRoots, ignorePatterns)
+	if err != nil {
+		return BuildResult{}, err
+	}
+	if len(classSassSources) > 0 && toolkit == "" {
+		return BuildResult{}, fmt.Errorf("class Sass compilation requires a selected toolkit; pass -toolkit classic or -toolkit modern")
+	}
 	if toolkit == "" && len(config.Requires) > 0 {
 		return BuildResult{}, fmt.Errorf("app package resolution requires a toolkit; pass -toolkit classic or -toolkit modern")
 	}
@@ -243,6 +251,7 @@ func BuildWithTargetOptions(appDir, outputDir, selectedToolkit, selectedPlatform
 	watchPaths = append(watchPaths, resourceWatchPaths...)
 	watchPaths = append(watchPaths, styleWatchPaths...)
 	watchPaths = append(watchPaths, scriptWatchPaths...)
+	watchPaths = append(watchPaths, classSassSources...)
 	watchPaths = append(watchPaths, filepath.Join(root, "app.json"), filepath.Join(root, "workspace.json"), entryPath)
 	for _, sourcePath := range paths {
 		if sourcePath.framework {
@@ -322,6 +331,11 @@ func BuildWithTargetOptions(appDir, outputDir, selectedToolkit, selectedPlatform
 	if err != nil {
 		return BuildResult{}, err
 	}
+	classSassCSS, classSassWarnings, err := compileClassSass(root, classSassSources, minify)
+	if err != nil {
+		return BuildResult{}, err
+	}
+	warnings = append(warnings, classSassWarnings...)
 	outputPath := filepath.Join(outputRoot, "app.js")
 	if outputPath == entryPath {
 		return BuildResult{}, fmt.Errorf("output bundle would overwrite JavaScript entry %s", entryPath)
@@ -338,6 +352,24 @@ func BuildWithTargetOptions(appDir, outputDir, selectedToolkit, selectedPlatform
 	copiedStylesheets, err := copyStylesheets(styleSheets, outputRoot, outputPath)
 	if err != nil {
 		return BuildResult{}, err
+	}
+	if len(classSassCSS) > 0 {
+		const generatedSassURL = "app-sass.css"
+		generatedSassOutput := filepath.ToSlash(filepath.Join(toolkit, "resources", generatedSassURL))
+		for _, stylesheet := range copiedStylesheets {
+			stylesheetURL := filepath.ToSlash(stylesheet.URL)
+			if stylesheetURL == generatedSassURL || (!stylesheet.Remote && stylesheetURL == generatedSassOutput) {
+				return BuildResult{}, fmt.Errorf("configured stylesheet output %s conflicts with generated class Sass", generatedSassURL)
+			}
+		}
+		generatedSassPath := filepath.Join(outputRoot, toolkit, "resources", generatedSassURL)
+		if err := os.MkdirAll(filepath.Dir(generatedSassPath), 0o755); err != nil {
+			return BuildResult{}, fmt.Errorf("create generated Sass output directory: %w", err)
+		}
+		if err := writeFileAtomic(generatedSassPath, classSassCSS); err != nil {
+			return BuildResult{}, fmt.Errorf("write generated Sass stylesheet %s: %w", generatedSassPath, err)
+		}
+		copiedStylesheets = append(copiedStylesheets, StyleSheet{URL: generatedSassURL, Path: generatedSassPath})
 	}
 	jsAssets, err := copyScripts(scripts, outputRoot, outputPath)
 	if err != nil {
