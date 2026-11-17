@@ -274,6 +274,42 @@ func TestBuildResolvesXtypeAndWidgetAliases(t *testing.T) {
 	}
 }
 
+func TestBuildResolvesControllerViewModelAndPluginAliases(t *testing.T) {
+	root := makeFixture(t, map[string]string{
+		"app.json": `{"name":"Example","namespace":"Example","classpath":["app"],"js":[{"path":"app.js","bundle":true}]}`,
+		"app.js":   `Ext.application({name: 'Example', extend: 'Example.Application'});`,
+		"app/Application.js": `Ext.define('Example.Application', {
+    extend: 'Ext.app.Application',
+    mainView: 'Example.view.Main'
+});`,
+		"app/view/Main.js": `Ext.define('Example.view.Main', {
+    extend: 'Ext.Panel',
+    controller: 'main',
+    viewModel: 'main',
+    plugins: ['gridexporter']
+});`,
+		"app/view/MainController.js": `Ext.define('Example.view.MainController', { alias: 'controller.main' });`,
+		"app/view/MainModel.js":      `Ext.define('Example.view.MainModel', { alias: 'viewmodel.main' });`,
+		"app/plugin/GridExporter.js": `Ext.define('Example.plugin.GridExporter', { alias: 'plugin.gridexporter' });`,
+	})
+	result, err := Build(root, "out")
+	if err != nil {
+		t.Fatal(err)
+	}
+	bundle, err := os.ReadFile(result.OutputPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	content := string(bundle)
+	main := strings.Index(content, "// Source: app/view/Main.js")
+	for _, dependency := range []string{"app/view/MainController.js", "app/view/MainModel.js", "app/plugin/GridExporter.js"} {
+		position := strings.Index(content, "// Source: "+dependency)
+		if position < 0 || position >= main {
+			t.Errorf("alias dependency %s should precede Main, position = %d, Main = %d", dependency, position, main)
+		}
+	}
+}
+
 func TestBuildLoadsMixinBeforeConsumer(t *testing.T) {
 	root := makeFixture(t, map[string]string{
 		"app.json": `{"name":"Example","namespace":"Example","classpath":["app"],"js":[{"path":"app.js","bundle":true}]}`,

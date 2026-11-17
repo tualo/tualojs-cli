@@ -20,7 +20,7 @@ Die Implementierung startet mit einem kleinen, durch Tests abgesicherten vertika
 2. **Erster Go-Build** (`docs/02-erster-go-build.md`): Go-Modul und CLI, minimales `app.json`-Modell, statische Ext-Klassenmetadaten, Abhängigkeitsordnung und einfaches JavaScript-Bundle.
 3. **Klassen-Overrides** (`docs/03-overrides.md`): `app.json`-Override-Pfade erfassen und Overrides nur bei geladenem Ziel an der richtigen Stelle einordnen.
 4. **Erstes Realprojekt** (`docs/04-default-realprojekt.md`): `default` als Universal-App einlesen, Toolkit-Klasspfade auswählen und reale Abweichungen von einem gültigen Sencha-Build erfassen.
-5. **Xtype- und Alias-Auflösung** (`docs/05-xtype-aufloesung.md`): Klassen aus `alias`, `xtype`-Konfiguration und `Ext.widget()` statisch finden.
+5. **Xtype- und Alias-Auflösung** (`docs/05-xtype-aufloesung.md`): Klassen aus `alias`, `xtype`, `controller`, `viewModel`, `plugins` und `Ext.widget()` statisch finden.
 6. **Projektmodell erweitern** (`docs/06-projektmodell.md`): `workspace.json`, Ext-SDK-Version und transitive Package-Classpaths.
 7. **Watch-Preview-Server** (`docs/07-watch-preview.md`): Go-Build lokal ausliefern, Quellen beobachten und Browser bei erfolgreichem Neubau aktualisieren.
 8. **JavaScript-Parsing erweitern** (`docs/08-javascript-parser.md`): Lexer/Parser und eng begrenzte Sencha-kompatible Quelltransformationen ausbauen.

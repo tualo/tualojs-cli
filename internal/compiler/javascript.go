@@ -44,6 +44,19 @@ func parseExtMetadata(source string) ([]classDeclaration, []string, []string, er
 		if (tokens[i].kind == identifierToken || tokens[i].kind == stringToken) && tokens[i].value == "xtype" && is(tokens, i+1, ":") && i+2 < len(tokens) && isStaticString(tokens, i+2, len(tokens)) {
 			sourceDependencies = append(sourceDependencies, widgetAlias(tokens[i+2].value))
 		}
+		if i+2 < len(tokens) && (tokens[i].kind == identifierToken || tokens[i].kind == stringToken) && is(tokens, i+1, ":") {
+			switch tokens[i].value {
+			case "controller", "viewModel", "ptype":
+				if tokens[i+2].kind == stringToken && isStaticString(tokens, i+2, len(tokens)) {
+					prefix := map[string]string{"controller": "controller", "viewModel": "viewmodel", "ptype": "plugin"}[tokens[i].value]
+					sourceDependencies = append(sourceDependencies, configAlias(tokens[i+2].value, prefix))
+				}
+			case "plugins":
+				for _, plugin := range stringArray(tokens, i+2, len(tokens)) {
+					sourceDependencies = append(sourceDependencies, configAlias(plugin, "plugin"))
+				}
+			}
+		}
 		if !is(tokens, i, "Ext") || !is(tokens, i+1, ".") {
 			continue
 		}
@@ -180,6 +193,13 @@ func widgetAlias(name string) string {
 		return name
 	}
 	return "widget." + name
+}
+
+func configAlias(name, kind string) string {
+	if strings.Contains(name, ".") {
+		return name
+	}
+	return kind + "." + name
 }
 
 func uniqueStrings(values []string) []string {

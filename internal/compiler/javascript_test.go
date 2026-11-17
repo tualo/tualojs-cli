@@ -163,6 +163,23 @@ func TestParseUsesAsDeferredDependency(t *testing.T) {
 	}
 }
 
+func TestParseControllerViewModelAndPluginAliases(t *testing.T) {
+	source := `Ext.define('Example.view.Main', {
+    controller: 'main',
+    viewModel: 'main',
+    plugins: ['gridexporter'],
+    items: [{ plugins: [{ ptype: 'rowexpander' }] }]
+});`
+	_, _, dependencies, err := parseExtMetadata(source)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []string{"controller.main", "viewmodel.main", "plugin.gridexporter", "plugin.rowexpander"}
+	if !reflect.DeepEqual(dependencies, want) {
+		t.Fatalf("config alias dependencies = %#v, want %#v", dependencies, want)
+	}
+}
+
 func TestParseExtDefineFactoryFunction(t *testing.T) {
 	source := `
 Ext.define('Example.draw.AnimationParser', function () {
