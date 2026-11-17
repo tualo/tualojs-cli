@@ -310,6 +310,31 @@ func TestBuildResolvesControllerViewModelAndPluginAliases(t *testing.T) {
 	}
 }
 
+func TestBuildResolvesAlternateClassName(t *testing.T) {
+	root := makeFixture(t, map[string]string{
+		"app.json": `{"name":"Example","namespace":"Example","classpath":["app"],"js":[{"path":"app.js","bundle":true}]}`,
+		"app.js":   `Ext.application({name: 'Example'}); Ext.create('Legacy.Button');`,
+		"app/Button.js": `Ext.define('Example.Button', {
+    extend: 'Ext.Button',
+    alternateClassName: ['Legacy.Button']
+});`,
+	})
+	result, err := Build(root, "out")
+	if err != nil {
+		t.Fatal(err)
+	}
+	bundle, err := os.ReadFile(result.OutputPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	content := string(bundle)
+	button := strings.Index(content, "// Source: app/Button.js")
+	entry := strings.Index(content, "// Source: app.js")
+	if button < 0 || entry < 0 || button >= entry {
+		t.Fatalf("alternate class name was not resolved before entry, positions = %d, %d", button, entry)
+	}
+}
+
 func TestBuildLoadsMixinBeforeConsumer(t *testing.T) {
 	root := makeFixture(t, map[string]string{
 		"app.json": `{"name":"Example","namespace":"Example","classpath":["app"],"js":[{"path":"app.js","bundle":true}]}`,

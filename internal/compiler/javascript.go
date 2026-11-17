@@ -182,6 +182,7 @@ func metadataDependencies(properties map[string][]string) []string {
 
 func metadataAliases(properties map[string][]string) []string {
 	aliases := append([]string{}, properties["alias"]...)
+	aliases = append(aliases, properties["alternateClassName"]...)
 	for _, xtype := range properties["xtype"] {
 		aliases = append(aliases, widgetAlias(xtype))
 	}
@@ -238,7 +239,7 @@ func objectProperties(tokens []jsToken, open int) (map[string][]string, error) {
 			if value < close && tokens[value].kind == stringToken && isStaticString(tokens, value, close) {
 				properties[key] = append(properties[key], tokens[value].value)
 			}
-		case "requires", "alias", "xtype", "uses":
+		case "requires", "alias", "xtype", "uses", "alternateClassName":
 			properties[key] = append(properties[key], stringArray(tokens, value, close)...)
 		case "mixins":
 			properties[key] = append(properties[key], classReferenceValues(tokens, value, close)...)

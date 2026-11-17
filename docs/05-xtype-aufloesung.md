@@ -2,9 +2,9 @@
 
 ## Verhalten
 
-Ext-Klassen können über `alias` registriert werden. Komponenten erscheinen häufig als `alias: 'widget.foo'` oder `xtype: 'foo'`; Controller, ViewModels und Plugins verwenden Aliase wie `controller.foo`, `viewmodel.foo` und `plugin.foo`. Verbraucher referenzieren sie über `xtype`, `Ext.widget()`, `controller`, `viewModel` oder `plugins`, oft ohne `requires`.
+Ext-Klassen können über `alias` und `alternateClassName` registriert werden. Komponenten erscheinen häufig als `alias: 'widget.foo'` oder `xtype: 'foo'`; Controller, ViewModels und Plugins verwenden Aliase wie `controller.foo`, `viewmodel.foo` und `plugin.foo`. Verbraucher referenzieren sie über `xtype`, `Ext.widget()`, `controller`, `viewModel`, `plugins` oder einen alternativen Klassennamen, oft ohne `requires`.
 
-Der Go-Compiler indiziert statische `alias`- und `xtype`-Eigenschaften pro `Ext.define` und nutzt die Alias-Tabelle zum Auflösen der genannten Config-Referenzen. Die gefundene Klasse wird vor ihrer verwendenden Klasse in das Bundle aufgenommen. Kurze Aliasnamen werden mit dem passenden Typpräfix normalisiert.
+Der Go-Compiler indiziert statische `alias`, `xtype`- und `alternateClassName`-Eigenschaften pro `Ext.define` und nutzt die Alias-Tabelle zum Auflösen der genannten Config-Referenzen. Die gefundene Klasse wird vor ihrer verwendenden Klasse in das Bundle aufgenommen. Kurze Widget-, Controller-, ViewModel- und Plugin-Aliasnamen werden mit dem passenden Typpräfix normalisiert.
 
 ## Prüfungen
 

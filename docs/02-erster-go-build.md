@@ -31,7 +31,7 @@ Das Ergebnis liegt unter `testdata/fixtures/minimal-modern/build-go/app.js`. Rel
 - Sucht `.js`-Dateien in den Classpath-Verzeichnissen und erkennt `Ext.define`-Deklarationen sowohl mit Objekt- als auch mit Factory-Funktions-Konfiguration sowie `Ext.application`.
 - Ermittelt `extend`, `requires`, `mainView`, `mixins`, `uses` und `xclass` aus statischen Konfigurationsobjekten sowie statische Klassennamen in `Ext.create`, `Ext.require` und `Ext.syncRequire`.
 - Verknüpft Override-Klassen aus den in `app.json` angegebenen `overrides`-Pfaden mit ihrem Ziel; Overrides werden direkt nach einem tatsächlich geladenen Ziel ausgegeben.
-- Löst Klassen-Aliase aus `alias`, `xtype`, `controller`, `viewModel` und `plugins` anhand der jeweiligen Config-Referenzen auf.
+- Löst Klassen-Aliase und `alternateClassName` aus `alias`, `xtype`, `controller`, `viewModel` und `plugins` anhand der jeweiligen Config-Referenzen auf.
 - Mit `-normalize-let-const` werden `let`-/`const`-Deklarationen im direkten Funktions-Scope zu `var` normalisiert, einschließlich eines gleichnamigen Funktionsparameters. Standardmäßig bleiben sie unverändert.
 - Löst `Namespace.*` und `Ext.*` gegen die App- und ausgewählten SDK-Classpaths auf. App-/Package-Klassen kommen ins Bundle; Framework-Klassen werden als Preview-Preloads ausgewiesen.
 - Beachtet die Reihenfolge der Classpath-Pfade. Bei doppelten Klassendefinitionen gewinnt ein eindeutiger kanonischer Dateiname, ansonsten die frühere Classpath-Quelle; uneindeutige Fälle sind Fehler.

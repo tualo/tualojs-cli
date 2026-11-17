@@ -180,6 +180,16 @@ func TestParseControllerViewModelAndPluginAliases(t *testing.T) {
 	}
 }
 
+func TestParseAlternateClassNames(t *testing.T) {
+	classes, _, _, err := parseExtMetadata(`Ext.define('Example.Button', { alternateClassName: ['Legacy.Button', 'Example.OldButton'] });`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got, want := classes[0].aliases, []string{"Legacy.Button", "Example.OldButton"}; !reflect.DeepEqual(got, want) {
+		t.Fatalf("alternate class names = %#v, want %#v", got, want)
+	}
+}
+
 func TestParseExtDefineFactoryFunction(t *testing.T) {
 	source := `
 Ext.define('Example.draw.AnimationParser', function () {
