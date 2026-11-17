@@ -103,7 +103,7 @@ func copyStylesheets(stylesheets []resolvedStylesheet, outputRoot, bundlePath st
 		if absolute == bundlePath {
 			return nil, fmt.Errorf("stylesheet output would overwrite JavaScript bundle %s", bundlePath)
 		}
-		if err := copyResourceFile(stylesheet.source, absolute, written); err != nil {
+		if err := copyResourceFile(stylesheet.source, absolute, written, false); err != nil {
 			return nil, fmt.Errorf("copy stylesheet: %w", err)
 		}
 		copied = append(copied, StyleSheet{URL: stylesheet.url, Path: absolute})
@@ -285,16 +285,15 @@ func validateResourceOutput(output string) error {
 func copyResources(resources []resolvedResource, outputRoot, appRoot string, ignore []*regexp.Regexp) (int, error) {
 	resourceRoot := filepath.Join(outputRoot, "resources")
 	written := make(map[string]string)
-	count := 0
 	for _, resource := range resources {
 		info, err := os.Stat(resource.source)
 		if err != nil {
-			return count, fmt.Errorf("stat resource %s: %w", resource.source, err)
+			return len(written), fmt.Errorf("stat resource %s: %w", resource.source, err)
 		}
 		if info.IsDir() {
 			targetBase := filepath.Join(resourceRoot, filepath.FromSlash(resource.output))
 			if isPathWithin(targetBase, resource.source) {
-				return count, fmt.Errorf("resource output %s is inside its source directory %s", targetBase, resource.source)
+				return len(written), fmt.Errorf("resource output %s is inside its source directory %s", targetBase, resource.source)
 			}
 			err = filepath.WalkDir(resource.source, func(sourcePath string, entry fs.DirEntry, walkErr error) error {
 				if walkErr != nil {
@@ -320,14 +319,13 @@ func copyResources(resources []resolvedResource, outputRoot, appRoot string, ign
 					return err
 				}
 				destination := filepath.Join(targetBase, relative)
-				if err := copyResourceFile(sourcePath, destination, written); err != nil {
+				if err := copyResourceFile(sourcePath, destination, written, true); err != nil {
 					return err
 				}
-				count++
 				return nil
 			})
 			if err != nil {
-				return count, fmt.Errorf("copy resource directory %s: %w", resource.source, err)
+				return len(written), fmt.Errorf("copy resource directory %s: %w", resource.source, err)
 			}
 			continue
 		}
@@ -335,21 +333,24 @@ func copyResources(resources []resolvedResource, outputRoot, appRoot string, ign
 		if resource.output == "." || filepath.Ext(resource.output) == "" {
 			destination = filepath.Join(destination, filepath.Base(resource.source))
 		}
-		if err := copyResourceFile(resource.source, destination, written); err != nil {
-			return count, err
+		if err := copyResourceFile(resource.source, destination, written, true); err != nil {
+			return len(written), err
 		}
-		count++
 	}
-	return count, nil
+	return len(written), nil
 }
 
-func copyResourceFile(source, destination string, written map[string]string) error {
+func copyResourceFile(source, destination string, written map[string]string, overwrite bool) error {
 	destination, err := filepath.Abs(destination)
 	if err != nil {
 		return err
 	}
 	if previous, exists := written[destination]; exists && previous != source {
-		return fmt.Errorf("resource collision: %s and %s both map to %s", previous, source, destination)
+		if !overwrite {
+			return fmt.Errorf("resource collision: %s and %s both map to %s", previous, source, destination)
+		}
+	} else if exists {
+		return nil
 	}
 	data, err := os.ReadFile(source)
 	if err != nil {

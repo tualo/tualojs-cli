@@ -464,6 +464,31 @@ func TestBuildCopiesConfiguredResources(t *testing.T) {
 	}
 }
 
+func TestBuildLaterResourceEntryOverridesCollision(t *testing.T) {
+	root := makeFixture(t, map[string]string{
+		"app.json":             `{"name":"Example","namespace":"Example","classpath":["app"],"resources":[{"path":"app-resource.txt","output":"shared/Readme.md"},{"path":"package-resource.txt","output":"shared/Readme.md"}],"js":[{"path":"app.js","bundle":true}]}`,
+		"app.js":               `Ext.application({name: 'Example'});`,
+		"app/Empty.js":         "",
+		"app-resource.txt":     "application resource",
+		"package-resource.txt": "package resource",
+	})
+
+	result, err := Build(root, "out")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.ResourceFiles != 1 {
+		t.Fatalf("copied resource files = %d, want 1 unique output", result.ResourceFiles)
+	}
+	content, err := os.ReadFile(filepath.Join(result.ResourcesPath, "shared", "Readme.md"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(content) != "package resource" {
+		t.Fatalf("colliding resource = %q, want later entry to take precedence", content)
+	}
+}
+
 func TestBuildCopiesNonBundleJavaScriptAssetsInManifestOrder(t *testing.T) {
 	root := makeFixture(t, map[string]string{
 		"app.json":      `{"name":"Example","namespace":"Example","classpath":["app"],"js":[{"path":"vendor/pre.js"},{"path":"app.js","bundle":true},{"path":"https://cdn.example/after.js","remote":true}]}`,
