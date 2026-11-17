@@ -238,7 +238,11 @@ func resolveResources(appRoot, appName, mode string, entries resourceList, toolk
 			}
 			output = outputs[0]
 		} else if info.IsDir() && filepath.Base(filepath.Clean(paths[0])) == "resources" {
-			output = "."
+			if toolkit != "" && (strings.Contains(entry.Path, "${toolkit.name}") || filepath.ToSlash(filepath.Clean(paths[0])) == filepath.ToSlash(filepath.Join(toolkit, "resources"))) {
+				output = filepath.ToSlash(filepath.Join(toolkit, "resources"))
+			} else {
+				output = "."
+			}
 		} else {
 			relative, err := filepath.Rel(appRoot, source)
 			if err != nil {

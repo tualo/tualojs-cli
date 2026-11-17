@@ -365,14 +365,14 @@ func BuildWithTargetOptions(appDir, outputDir, selectedToolkit, selectedPlatform
 	}
 	if len(classSassCSS) > 0 {
 		const generatedSassURL = "app-sass.css"
-		generatedSassOutput := filepath.ToSlash(filepath.Join(toolkit, "resources", generatedSassURL))
+		generatedSassOutput := filepath.ToSlash(filepath.Join("resources", toolkit, "resources", generatedSassURL))
 		for _, stylesheet := range copiedStylesheets {
 			stylesheetURL := filepath.ToSlash(stylesheet.URL)
 			if stylesheetURL == generatedSassURL || (!stylesheet.Remote && stylesheetURL == generatedSassOutput) {
 				return BuildResult{}, fmt.Errorf("configured stylesheet output %s conflicts with generated class Sass", generatedSassURL)
 			}
 		}
-		generatedSassPath := filepath.Join(outputRoot, toolkit, "resources", generatedSassURL)
+		generatedSassPath := filepath.Join(outputRoot, "resources", toolkit, "resources", generatedSassURL)
 		if err := os.MkdirAll(filepath.Dir(generatedSassPath), 0o755); err != nil {
 			return BuildResult{}, fmt.Errorf("create generated Sass output directory: %w", err)
 		}

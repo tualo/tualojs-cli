@@ -549,19 +549,20 @@ func TestBuildCopiesConfiguredResources(t *testing.T) {
 
 func TestBuildCompilesSCSSPairedWithClasspathJavaScript(t *testing.T) {
 	root := makeFixture(t, map[string]string{
-		"app.json":                      `{"name":"Example","namespace":"Example","toolkit":"classic","classpath":["app"],"sass":{"etc":"sass/etc/all.scss","var":"sass/var","src":["sass/src","${toolkit.name}/sass/src"]},"css":[{"path":"styles/base.css"}],"js":[{"path":"app.js","bundle":true}]}`,
-		"app.js":                        `Ext.application({name: 'Example'});`,
-		"app/Fashion.js":                `Ext.define('Example.Fashion', {});`,
-		"app/Fashion.scss":              `@include extjs-button-small-ui($ui: 'sample');`,
-		"app/Main.js":                   `Ext.define('Example.Main', {});`,
-		"app/Main.scss":                 `@import "class-colors"; .main { border: 0px; color: $class-color; }`,
-		"app/_class-colors.scss":        `$class-color: #456;`,
-		"app/Orphan.scss":               `.orphan { display: none; }`,
-		"sass/etc/all.scss":             "$base-color: #246;",
-		"sass/var/colors.scss":          "$main-color: $base-color;",
-		"sass/src/base.scss":            `.configured { color: $main-color; }`,
-		"classic/sass/src/toolkit.scss": `.toolkit { color: $main-color; }`,
-		"styles/base.css":               "body { color: black; }",
+		"app.json":                         `{"name":"Example","namespace":"Example","toolkit":"classic","classpath":["app"],"resources":[{"path":"${toolkit.name}/resources"}],"sass":{"etc":"sass/etc/all.scss","var":"sass/var","src":["sass/src","${toolkit.name}/sass/src"]},"css":[{"path":"styles/base.css"}],"js":[{"path":"app.js","bundle":true}]}`,
+		"app.js":                           `Ext.application({name: 'Example'});`,
+		"app/Fashion.js":                   `Ext.define('Example.Fashion', {});`,
+		"app/Fashion.scss":                 `@include extjs-button-small-ui($ui: 'sample');`,
+		"app/Main.js":                      `Ext.define('Example.Main', {});`,
+		"app/Main.scss":                    `@import "class-colors"; .main { border: 0px; color: $class-color; }`,
+		"app/_class-colors.scss":           `$class-color: #456;`,
+		"app/Orphan.scss":                  `.orphan { display: none; }`,
+		"sass/etc/all.scss":                "$base-color: #246;",
+		"sass/var/colors.scss":             "$main-color: $base-color;",
+		"sass/src/base.scss":               `.configured { color: $main-color; }`,
+		"classic/sass/src/toolkit.scss":    `.toolkit { color: $main-color; }`,
+		"classic/resources/profile/avatar": "avatar asset",
+		"styles/base.css":                  "body { color: black; }",
 	})
 
 	sassBinary := filepath.Join(t.TempDir(), "sass")
@@ -578,7 +579,7 @@ esac
 case "$input" in
     *Fashion.scss*) echo "Sass entry should omit Fashion.scss: $input" >&2; exit 4 ;;
 esac
-printf '.configured{color:#246}.toolkit{color:#246}.main{border:0px}\n'
+printf '.configured{color:#246}.toolkit{color:#246}.main{border:0px;background-image:url(../../classic/resources/profile/avatar)}\n'
 `
 	if err := os.WriteFile(sassBinary, []byte(sassScript), 0o755); err != nil {
 		t.Fatal(err)
@@ -595,15 +596,20 @@ printf '.configured{color:#246}.toolkit{color:#246}.main{border:0px}\n'
 	if result.StyleSheets[0].URL != "styles/base.css" || result.StyleSheets[1].URL != "app-sass.css" {
 		t.Fatalf("stylesheet order = %#v, want configured CSS followed by generated class Sass", result.StyleSheets)
 	}
-	if result.StyleSheets[1].Path != filepath.Join(root, "out", "classic", "resources", "app-sass.css") {
-		t.Fatalf("generated Sass path = %q, want file under classic/resources", result.StyleSheets[1].Path)
+	if result.StyleSheets[1].Path != filepath.Join(root, "out", "resources", "classic", "resources", "app-sass.css") {
+		t.Fatalf("generated Sass path = %q, want file alongside copied toolkit resources", result.StyleSheets[1].Path)
 	}
 	compiled, err := os.ReadFile(result.StyleSheets[1].Path)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if string(compiled) != ".configured{color:#246}.toolkit{color:#246}.main{border:0px}\n" {
+	if string(compiled) != ".configured{color:#246}.toolkit{color:#246}.main{border:0px;background-image:url(../../classic/resources/profile/avatar)}\n" {
 		t.Fatalf("generated Sass CSS = %q", compiled)
+	}
+	avatarPath := filepath.Clean(filepath.Join(filepath.Dir(result.StyleSheets[1].Path), "../../classic/resources/profile/avatar"))
+	avatar, err := os.ReadFile(avatarPath)
+	if err != nil || string(avatar) != "avatar asset" {
+		t.Fatalf("relative Sass CSS asset = %q, err=%v", avatar, err)
 	}
 	if len(result.Warnings) != 1 || !strings.Contains(result.Warnings[0], "Fashion-dependent Sass source") || !strings.Contains(result.Warnings[0], "Fashion.scss") {
 		t.Fatalf("Sass warnings = %#v, want one Fashion-dependent stylesheet warning", result.Warnings)
