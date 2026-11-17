@@ -12,6 +12,9 @@ import (
 	"strings"
 )
 
+var sassImportDirective = regexp.MustCompile(`(?m)^[\t ]*@(import|use|forward)[\t ]+([^;\n]+)`)
+var sassImportPath = regexp.MustCompile(`["']([^"']+)["']`)
+
 func resolveClassSassSources(appRoot string, sourceRoots []string, ignore []*regexp.Regexp) ([]string, error) {
 	var sources []string
 	for _, sourceRoot := range sourceRoots {
@@ -126,6 +129,116 @@ func resolveConfiguredSassSources(appRoot, appName, toolkit string, config sassC
 	return uniquePaths(sources), nil
 }
 
+func resolveSassImportWatchPaths(appRoot string, sources []string) ([]string, error) {
+	seen := make(map[string]bool)
+	visited := make(map[string]bool)
+	var dependencies []string
+	var visit func(string) error
+	visit = func(source string) error {
+		absolute, err := filepath.Abs(source)
+		if err != nil {
+			return err
+		}
+		if visited[absolute] {
+			return nil
+		}
+		visited[absolute] = true
+		data, err := os.ReadFile(absolute)
+		if err != nil {
+			return fmt.Errorf("read Sass import source %s: %w", absolute, err)
+		}
+		for _, importPath := range sassImportPaths(data) {
+			dependency, exists, err := resolveSassImport(appRoot, absolute, importPath)
+			if err != nil {
+				return err
+			}
+			if !exists {
+				continue
+			}
+			if !seen[dependency] {
+				seen[dependency] = true
+				dependencies = append(dependencies, dependency)
+			}
+			if err := visit(dependency); err != nil {
+				return err
+			}
+		}
+		return nil
+	}
+	for _, source := range sources {
+		if err := visit(source); err != nil {
+			return nil, err
+		}
+	}
+	return dependencies, nil
+}
+
+func sassImportPaths(source []byte) []string {
+	var paths []string
+	for _, directive := range sassImportDirective.FindAllSubmatch(source, -1) {
+		value := string(directive[2])
+		if strings.Contains(value, "url(") {
+			continue
+		}
+		for _, match := range sassImportPath.FindAllStringSubmatch(value, -1) {
+			path := strings.TrimSpace(match[1])
+			if path == "" || strings.HasPrefix(path, "sass:") || strings.Contains(path, "://") || strings.HasSuffix(strings.ToLower(path), ".css") {
+				continue
+			}
+			paths = append(paths, path)
+		}
+	}
+	return paths
+}
+
+func resolveSassImport(appRoot, importer, importPath string) (string, bool, error) {
+	path := filepath.FromSlash(importPath)
+	directories := []string{filepath.Dir(importer), appRoot}
+	for _, directory := range directories {
+		for _, candidate := range sassImportCandidates(filepath.Join(directory, path)) {
+			absolute, err := filepath.Abs(candidate)
+			if err != nil {
+				return "", false, err
+			}
+			if !isPathWithin(absolute, appRoot) {
+				continue
+			}
+			info, err := os.Stat(absolute)
+			if err != nil {
+				if os.IsNotExist(err) {
+					continue
+				}
+				return "", false, err
+			}
+			if info.Mode().IsRegular() && (strings.EqualFold(filepath.Ext(absolute), ".scss") || strings.EqualFold(filepath.Ext(absolute), ".sass")) {
+				return absolute, true, nil
+			}
+		}
+	}
+	return "", false, nil
+}
+
+func sassImportCandidates(path string) []string {
+	extension := strings.ToLower(filepath.Ext(path))
+	if extension == ".scss" || extension == ".sass" {
+		directory := filepath.Dir(path)
+		base := filepath.Base(path)
+		return []string{path, filepath.Join(directory, "_"+base)}
+	}
+	directory := filepath.Dir(path)
+	base := filepath.Base(path)
+	var candidates []string
+	for _, extension := range []string{".scss", ".sass"} {
+		candidates = append(candidates,
+			path+extension,
+			filepath.Join(directory, "_"+base+extension),
+			filepath.Join(path, "index"+extension),
+			filepath.Join(path, "_index"+extension),
+		)
+	}
+	return candidates
+}
+
 func compileClassSass(appRoot string, sources []string, minify bool) ([]byte, []string, error) {
 	if len(sources) == 0 {
 		return nil, nil, nil
@@ -176,6 +289,9 @@ func compileClassSass(appRoot string, sources []string, minify bool) ([]byte, []
 			detail = err.Error()
 		}
 		return nil, warnings, fmt.Errorf("compile class Sass with %s: %s", binary, detail)
+	}
+	if bytes.Contains(stdout.Bytes(), []byte("dynamic(")) {
+		return nil, warnings, fmt.Errorf("compiled CSS still contains dynamic(); Sencha Fashion is required for this Sass input")
 	}
 	return stdout.Bytes(), warnings, nil
 }

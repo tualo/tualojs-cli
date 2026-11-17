@@ -203,7 +203,9 @@ func TestWatcherRebuildsAfterSourceChanges(t *testing.T) {
 		"sdk/modern/modern/package.json":    `{"version":"8.0.0.43","sencha":{"name":"modern","requires":["core"],"classpath":"${package.dir}/src"}}`,
 		"sdk/build/ext-modern-all-debug.js": "window.Ext = window.Ext || {};",
 		"sdk/build/modern/theme-material/resources/theme-material-all.css": "body {}",
-		"app.js": `Ext.application({name: 'PreviewApp', extend: 'PreviewApp.Main'});`,
+		"app.js":           `Ext.application({name: 'PreviewApp', extend: 'PreviewApp.Main'});`,
+		"app/Main.scss":    `@import "colors"; .preview-main { color: $preview-color; }`,
+		"app/_colors.scss": `$preview-color: before;`,
 		"app/Main.js": `Ext.define('PreviewApp.Main', {
     extend: 'Ext.Panel',
     title: 'before',
@@ -227,6 +229,19 @@ func TestWatcherRebuildsAfterSourceChanges(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
+	sassBinary := filepath.Join(t.TempDir(), "sass")
+	sassScript := `#!/bin/sh
+input=$(cat "$SASS_SOURCE" "${SASS_SOURCE%/*}/_colors.scss")
+case "$input" in
+    *after*) printf '.preview-main{color:after}\n' ;;
+    *) printf '.preview-main{color:before}\n' ;;
+esac
+`
+	if err := os.WriteFile(sassBinary, []byte(sassScript), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("SASS", sassBinary)
+	t.Setenv("SASS_SOURCE", filepath.Join(root, "app", "Main.scss"))
 	result, err := compiler.BuildWithTargetOptions(root, "build-go", "modern", "phone", false, compiler.BuildModeDevelopment, false, false)
 	if err != nil {
 		t.Fatal(err)
@@ -237,6 +252,10 @@ func TestWatcherRebuildsAfterSourceChanges(t *testing.T) {
 	}
 	if !strings.Contains(string(initial), "app/PhoneOnly.js") || strings.Contains(string(initial), "app/DesktopOnly.js") {
 		t.Fatalf("initial preview build ignored its phone platform: %s", initial)
+	}
+	initialCSS, err := os.ReadFile(result.StyleSheets[len(result.StyleSheets)-1].Path)
+	if err != nil || !strings.Contains(string(initialCSS), "color:before") {
+		t.Fatalf("initial Sass output = %q, err=%v", initialCSS, err)
 	}
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -261,11 +280,15 @@ func TestWatcherRebuildsAfterSourceChanges(t *testing.T) {
 });`), 0o644); err != nil {
 		t.Fatal(err)
 	}
+	if err := os.WriteFile(filepath.Join(root, "app", "_colors.scss"), []byte(`$preview-color: after;`), 0o644); err != nil {
+		t.Fatal(err)
+	}
 	deadline := time.Now().Add(2 * time.Second)
 	built := false
 	for time.Now().Before(deadline) {
 		updated, err := os.ReadFile(result.OutputPath)
-		if err == nil && strings.Contains(string(updated), "title: 'after'") && strings.Contains(string(updated), "app/PhoneOnly.js") && !strings.Contains(string(updated), "app/DesktopOnly.js") {
+		updatedCSS, cssErr := os.ReadFile(result.StyleSheets[len(result.StyleSheets)-1].Path)
+		if err == nil && cssErr == nil && strings.Contains(string(updated), "title: 'after'") && strings.Contains(string(updated), "app/PhoneOnly.js") && !strings.Contains(string(updated), "app/DesktopOnly.js") && strings.Contains(string(updatedCSS), "color:after") {
 			built = true
 			break
 		}

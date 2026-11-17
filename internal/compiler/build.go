@@ -156,6 +156,10 @@ func BuildWithTargetOptions(appDir, outputDir, selectedToolkit, selectedPlatform
 	if len(sassSources) > 0 && toolkit == "" {
 		return BuildResult{}, fmt.Errorf("Sass compilation requires a selected toolkit; pass -toolkit classic or -toolkit modern")
 	}
+	sassImportWatchPaths, err := resolveSassImportWatchPaths(root, sassSources)
+	if err != nil {
+		return BuildResult{}, err
+	}
 	if toolkit == "" && len(config.Requires) > 0 {
 		return BuildResult{}, fmt.Errorf("app package resolution requires a toolkit; pass -toolkit classic or -toolkit modern")
 	}
@@ -257,6 +261,7 @@ func BuildWithTargetOptions(appDir, outputDir, selectedToolkit, selectedPlatform
 	watchPaths = append(watchPaths, styleWatchPaths...)
 	watchPaths = append(watchPaths, scriptWatchPaths...)
 	watchPaths = append(watchPaths, sassSources...)
+	watchPaths = append(watchPaths, sassImportWatchPaths...)
 	watchPaths = append(watchPaths, filepath.Join(root, "app.json"), filepath.Join(root, "workspace.json"), entryPath)
 	for _, sourcePath := range paths {
 		if sourcePath.framework {

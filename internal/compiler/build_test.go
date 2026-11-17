@@ -554,7 +554,8 @@ func TestBuildCompilesSCSSPairedWithClasspathJavaScript(t *testing.T) {
 		"app/Fashion.js":                `Ext.define('Example.Fashion', {});`,
 		"app/Fashion.scss":              `@include extjs-button-small-ui($ui: 'sample');`,
 		"app/Main.js":                   `Ext.define('Example.Main', {});`,
-		"app/Main.scss":                 `.main { border: 0px; }`,
+		"app/Main.scss":                 `@import "class-colors"; .main { border: 0px; color: $class-color; }`,
+		"app/_class-colors.scss":        `$class-color: #456;`,
 		"app/Orphan.scss":               `.orphan { display: none; }`,
 		"sass/etc/all.scss":             "$base-color: #246;",
 		"sass/var/colors.scss":          "$main-color: $base-color;",
@@ -607,12 +608,21 @@ printf '.configured{color:#246}.toolkit{color:#246}.main{border:0px}\n'
 	if len(result.Warnings) != 1 || !strings.Contains(result.Warnings[0], "Fashion-dependent Sass source") || !strings.Contains(result.Warnings[0], "Fashion.scss") {
 		t.Fatalf("Sass warnings = %#v, want one Fashion-dependent stylesheet warning", result.Warnings)
 	}
-	for _, source := range result.WatchPaths {
-		if source == filepath.Join(root, "app", "Main.scss") {
-			return
+	for _, expected := range []string{
+		filepath.Join(root, "app", "Main.scss"),
+		filepath.Join(root, "app", "_class-colors.scss"),
+	} {
+		found := false
+		for _, source := range result.WatchPaths {
+			if source == expected {
+				found = true
+				break
+			}
+		}
+		if !found {
+			t.Errorf("Sass source %s is missing from watcher paths", expected)
 		}
 	}
-	t.Fatal("class Sass source is missing from watcher paths")
 }
 
 func TestBuildLaterResourceEntryOverridesCollision(t *testing.T) {

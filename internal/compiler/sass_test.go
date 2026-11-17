@@ -4,6 +4,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 )
@@ -21,6 +22,32 @@ func TestCompileClassSassReportsMissingDartSass(t *testing.T) {
 	}
 }
 
+func TestResolveSassImportWatchPaths(t *testing.T) {
+	root := makeFixture(t, map[string]string{
+		"app/Main.scss": `@use "theme/colors";
+@forward "shared";
+@import "theme.css";
+@import url("https://cdn.example/theme.css");
+`,
+		"app/theme/_colors.scss":  `@use "palette";`,
+		"app/theme/_palette.scss": `$palette: blue;`,
+		"app/_shared.scss":        `$shared: true;`,
+	})
+
+	dependencies, err := resolveSassImportWatchPaths(root, []string{filepath.Join(root, "app", "Main.scss")})
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []string{
+		filepath.Join(root, "app", "theme", "_colors.scss"),
+		filepath.Join(root, "app", "theme", "_palette.scss"),
+		filepath.Join(root, "app", "_shared.scss"),
+	}
+	if !reflect.DeepEqual(dependencies, want) {
+		t.Fatalf("Sass import watch paths = %#v, want %#v", dependencies, want)
+	}
+}
+
 func TestDartSassCompilesConfiguredAndClassSourcesTogether(t *testing.T) {
 	binary := os.Getenv("SASS")
 	if binary == "" {
@@ -34,7 +61,8 @@ func TestDartSassCompilesConfiguredAndClassSourcesTogether(t *testing.T) {
 		"app.json":             `{"name":"Example","namespace":"Example","toolkit":"classic","classpath":["app"],"sass":{"etc":"sass/etc/all.scss","var":"sass/var","src":"sass/src"},"js":[{"path":"app.js","bundle":true}]}`,
 		"app.js":               `Ext.application({name: 'Example'});`,
 		"app/Main.js":          `Ext.define('Example.Main', {});`,
-		"app/Main.scss":        `.main { color: $main-color; }`,
+		"app/Main.scss":        `@import "palette"; .main { color: $main-color; }`,
+		"app/_palette.scss":    `$main-color: #456;`,
 		"sass/etc/all.scss":    `$base-color: #246;`,
 		"sass/var/colors.scss": `$main-color: $base-color;`,
 		"sass/src/base.scss":   `.configured { border: 0px; }`,
@@ -51,7 +79,7 @@ func TestDartSassCompilesConfiguredAndClassSourcesTogether(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, expected := range []string{".configured", "border: 0px", ".main", "color: #246"} {
+	for _, expected := range []string{".configured", "border: 0px", ".main", "color: #456"} {
 		if !strings.Contains(string(css), expected) {
 			t.Errorf("compiled Sass CSS is missing %q: %s", expected, css)
 		}
