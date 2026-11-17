@@ -143,20 +143,24 @@ func BuildWithTargetOptions(appDir, outputDir, selectedToolkit, selectedPlatform
 	if err != nil {
 		return BuildResult{}, err
 	}
-	configuredSassSources, err := resolveConfiguredSassSources(root, config.Name, toolkit, config.Sass, ignorePatterns)
+	appSassEtc, err := resolveConfiguredSassSources(root, config.Name, toolkit, sassConfig{Etc: config.Sass.Etc}, ignorePatterns)
+	if err != nil {
+		return BuildResult{}, err
+	}
+	appSassVar, err := resolveConfiguredSassSources(root, config.Name, toolkit, sassConfig{Var: config.Sass.Var}, ignorePatterns)
+	if err != nil {
+		return BuildResult{}, err
+	}
+	appSassSrc, err := resolveConfiguredSassSources(root, config.Name, toolkit, sassConfig{Src: config.Sass.Src}, ignorePatterns)
+	if err != nil {
+		return BuildResult{}, err
+	}
+	appEtcVariables, err := collectSassVariableNames(appSassEtc)
 	if err != nil {
 		return BuildResult{}, err
 	}
 	sassRoots := append(append([]string{}, config.Classpath...), config.Overrides...)
 	classSassSources, err := resolveClassSassSources(root, sassRoots, ignorePatterns)
-	if err != nil {
-		return BuildResult{}, err
-	}
-	sassSources := uniquePaths(append(configuredSassSources, classSassSources...))
-	if len(sassSources) > 0 && toolkit == "" {
-		return BuildResult{}, fmt.Errorf("Sass compilation requires a selected toolkit; pass -toolkit classic or -toolkit modern")
-	}
-	sassImportWatchPaths, err := resolveSassImportWatchPaths(root, sassSources)
 	if err != nil {
 		return BuildResult{}, err
 	}
@@ -171,7 +175,11 @@ func BuildWithTargetOptions(appDir, outputDir, selectedToolkit, selectedPlatform
 	if err != nil {
 		return BuildResult{}, err
 	}
-	appPackages, err := resolveAppPackages(root, requiredPackages, toolkit, config.Locale)
+	var optionalPackages []string
+	if toolkit != "" {
+		optionalPackages = append(optionalPackages, theme)
+	}
+	appPackages, err := resolveAppPackagesWithOptional(root, requiredPackages, optionalPackages, toolkit, config.Locale)
 	if err != nil {
 		return BuildResult{}, err
 	}
@@ -185,6 +193,29 @@ func BuildWithTargetOptions(appDir, outputDir, selectedToolkit, selectedPlatform
 		if err != nil {
 			return BuildResult{}, fmt.Errorf("resolve framework toolkit classes: %w", err)
 		}
+	}
+	packageSassVarSources, packageSassVarWatchPaths, packageSassVariables, packageSassVarWarnings, err := resolvePackageSassVariables(root, appPackages.sassVarRoots, appEtcVariables, ignorePatterns)
+	if err != nil {
+		return BuildResult{}, err
+	}
+	appVarVariables, err := collectSassVariableNames(appSassVar)
+	if err != nil {
+		return BuildResult{}, err
+	}
+	for name := range appVarVariables {
+		packageSassVariables[name] = true
+	}
+	packageSassSources, packageSassWatchPaths, packageSassWarnings, err := resolvePackageClassSassSources(root, appPackages.sassRoots, packageSassVariables, ignorePatterns)
+	if err != nil {
+		return BuildResult{}, err
+	}
+	sassSources := uniquePaths(append(append(append(append(append(appSassEtc, packageSassVarSources...), appSassVar...), packageSassSources...), appSassSrc...), classSassSources...))
+	if len(sassSources) > 0 && toolkit == "" {
+		return BuildResult{}, fmt.Errorf("Sass compilation requires a selected toolkit; pass -toolkit classic or -toolkit modern")
+	}
+	sassImportWatchPaths, err := resolveSassImportWatchPaths(root, sassSources)
+	if err != nil {
+		return BuildResult{}, err
 	}
 	runtimePath, err := frameworkRuntimePath(config, appPackages.sdkRoot, toolkit)
 	if err != nil {
@@ -261,6 +292,8 @@ func BuildWithTargetOptions(appDir, outputDir, selectedToolkit, selectedPlatform
 	watchPaths = append(watchPaths, styleWatchPaths...)
 	watchPaths = append(watchPaths, scriptWatchPaths...)
 	watchPaths = append(watchPaths, sassSources...)
+	watchPaths = append(watchPaths, packageSassVarWatchPaths...)
+	watchPaths = append(watchPaths, packageSassWatchPaths...)
 	watchPaths = append(watchPaths, sassImportWatchPaths...)
 	watchPaths = append(watchPaths, filepath.Join(root, "app.json"), filepath.Join(root, "workspace.json"), entryPath)
 	for _, sourcePath := range paths {
@@ -301,6 +334,9 @@ func BuildWithTargetOptions(appDir, outputDir, selectedToolkit, selectedPlatform
 	if err != nil {
 		return BuildResult{}, err
 	}
+	warnings = append(warnings, appPackages.sassWarnings...)
+	warnings = append(warnings, packageSassVarWarnings...)
+	warnings = append(warnings, packageSassWarnings...)
 	orderedPaths := make(map[string]bool, len(ordered))
 	for _, source := range ordered {
 		orderedPaths[source.path] = true

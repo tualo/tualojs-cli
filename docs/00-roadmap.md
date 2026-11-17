@@ -29,6 +29,7 @@ Die Implementierung startet mit einem kleinen, durch Tests abgesicherten vertika
 11. **Assets und Build-Ausgabe** (`docs/11-assets-und-ausgabe.md`): zusätzliche JS-, CSS- und Resource-Einträge aus `app.json` deterministisch ausgeben und über die Preview ausliefern.
 12. **Minifizierung und Source Maps** (`docs/12-minifizierung.md`): optionale token-aware Minifizierung und token-/spaltenbasierte Source Maps; Sencha-kompatible Optimierungen weiter ergänzen.
 13. **Kompatibilitätsausbau** (`docs/13-kompatibilitaet.md`): weitere App-, Workspace-, Paket-, Theme- und Produktions-Build-Fälle ergänzen.
+14. **Theme-Package-Abhängigkeiten** (`docs/14-theme-packages.md`): das ausgewählte Theme-Package und seine transitiven SDK-Package-Abhängigkeiten in den Build aufnehmen.
 
 ## Architekturleitplanken
 

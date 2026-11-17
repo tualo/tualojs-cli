@@ -1066,7 +1066,7 @@ func TestBuildLoadsTransitiveSDKPackageClasspaths(t *testing.T) {
 
 func TestBuildLoadsStandardSDKPackageManifestFields(t *testing.T) {
 	root := makeFixture(t, map[string]string{
-		"app.json":                                                         `{"name":"Example","namespace":"Example","toolkit":"classic","requires":["exporter"],"classpath":["app"],"js":[{"path":"app.js","bundle":true}]}`,
+		"app.json":                                                         `{"name":"Example","namespace":"Example","toolkit":"classic","requires":["exporter"],"classpath":["app"],"sass":{"var":"sass/var"},"js":[{"path":"app.js","bundle":true}]}`,
 		"workspace.json":                                                   `{"frameworks":{"ext":{"path":"sdk","version":"8.0.0.43"}}}`,
 		"sdk/package.json":                                                 `{"name":"ext","version":"8.0.0.43","compatVersion":"8.0.0"}`,
 		"sdk/packages/core/package.json":                                   `{"version":"8.0.0.43","sencha":{"name":"core","classpath":"${package.dir}/src"}}`,
@@ -1116,6 +1116,97 @@ func TestBuildLoadsStandardSDKPackageManifestFields(t *testing.T) {
 		override := strings.Index(string(bundle), "// Source: "+overrideName)
 		if widget < 0 || override < 0 || widget >= override {
 			t.Errorf("package override %s should follow its target class: widget=%d override=%d", overrideName, widget, override)
+		}
+	}
+}
+
+func TestBuildCompilesLoadedPackageClassSassByToolkit(t *testing.T) {
+	root := makeFixture(t, map[string]string{
+		"app.json":                                                         `{"name":"Example","namespace":"Example","toolkit":"classic","requires":["exporter"],"classpath":["app"],"sass":{"var":"sass/var"},"js":[{"path":"app.js","bundle":true}]}`,
+		"workspace.json":                                                   `{"frameworks":{"ext":{"path":"sdk","version":"8.0.0.43"}}}`,
+		"sdk/package.json":                                                 `{"name":"ext","version":"8.0.0.43","compatVersion":"8.0.0"}`,
+		"sdk/packages/core/package.json":                                   `{"version":"8.0.0.43","sencha":{"name":"core","classpath":"${package.dir}/src","sass":{"var":"${package.dir}/sass/var","src":["${package.dir}/sass/src","${package.dir}/${toolkit.name}/sass/src"]}}}`,
+		"sdk/packages/exporter/package.json":                               `{"name":"exporter","requires":["core"],"classpath":"${package.dir}/src","sass":{"var":"${package.dir}/sass/var","src":["${package.dir}/sass/src","${package.dir}/${toolkit.name}/sass/src"]}}`,
+		"sdk/classic/classic/package.json":                                 `{"version":"8.0.0.43","sencha":{"name":"classic","requires":["core"],"classpath":"${package.dir}/src"}}`,
+		"sdk/packages/core/src/CoreStyle.js":                               `Ext.define('Lib.CoreStyle', {});`,
+		"sdk/packages/core/sass/var/colors.scss":                           `$core-color: dynamic(#123);`,
+		"sdk/packages/core/sass/src/CoreStyle.scss":                        `.core-style { color: $core-color; }`,
+		"sdk/packages/core/classic/src/CoreClassicStyle.js":                `Ext.define('Lib.CoreClassicStyle', {});`,
+		"sdk/packages/core/classic/sass/src/CoreClassicStyle.scss":         `.core-classic-style { color: $core-color; }`,
+		"sdk/packages/core/modern/src/CoreModernStyle.js":                  `Ext.define('Lib.CoreModernStyle', {});`,
+		"sdk/packages/core/modern/sass/src/CoreModernStyle.scss":           `.core-modern-style { color: $core-color; }`,
+		"sdk/packages/exporter/sass/var/colors.scss":                       `$exporter-color: $core-color;`,
+		"sdk/packages/exporter/src/ExporterStyle.js":                       `Ext.define('Lib.ExporterStyle', {});`,
+		"sdk/packages/exporter/sass/var/FashionColors.scss":                `$fashion-color: dynamic(#fff);`,
+		"sdk/packages/exporter/sass/src/ExporterStyle.scss":                `.exporter-style { color: $exporter-color; }`,
+		"sdk/packages/exporter/classic/src/ExporterClassicStyle.js":        `Ext.define('Lib.ExporterClassicStyle', {});`,
+		"sdk/packages/exporter/classic/sass/src/ExporterClassicStyle.scss": `.exporter-classic-style { color: $exporter-color; }`,
+		"sdk/packages/exporter/src/FashionStyle.js":                        `Ext.define('Lib.FashionStyle', {});`,
+		"sdk/packages/exporter/sass/src/FashionStyle.scss":                 `@include extjs-button-small-ui($ui: 'sample');`,
+		"sdk/packages/exporter/modern/src/ExporterModernStyle.js":          `Ext.define('Lib.ExporterModernStyle', {});`,
+		"sdk/packages/exporter/modern/sass/src/ExporterModernStyle.scss":   `.exporter-modern-style { color: black; }`,
+		"sass/var/app-overrides.scss":                                      `$exporter-color: teal;`,
+		"app.js":                                                           `Ext.application({name: 'Example'});`,
+		"app/Empty.js":                                                     "",
+	})
+
+	sassBinary := filepath.Join(t.TempDir(), "sass")
+	sassScript := `#!/bin/sh
+input=$(cat)
+for expected in \
+    'sdk/packages/core/sass/src/CoreStyle.scss' \
+    '$core-color: #123;' \
+    'sdk/packages/core/classic/sass/src/CoreClassicStyle.scss' \
+    'sdk/packages/exporter/sass/var/colors.scss' \
+    'sass/var/app-overrides.scss' \
+    'sdk/packages/exporter/sass/src/ExporterStyle.scss' \
+    'sdk/packages/exporter/classic/sass/src/ExporterClassicStyle.scss'; do
+    case "$input" in *"$expected"*) ;; *) echo "missing package Sass source $expected: $input" >&2; exit 2 ;; esac
+done
+case "$input" in *modern/sass/src/*) echo "modern package Sass leaked into classic build" >&2; exit 3 ;; esac
+case "$input" in *FashionStyle.scss*) echo "Fashion package Sass should be skipped" >&2; exit 4 ;; esac
+case "$input" in *FashionColors.scss*) echo "Fashion package variables should be skipped" >&2; exit 5 ;; esac
+case "$input" in *'$fashion-color: #fff;'*) ;; *) echo "literal dynamic Sass value was not normalized: $input" >&2; exit 6 ;; esac
+printf '.package-style{color:teal}\n'
+`
+	if err := os.WriteFile(sassBinary, []byte(sassScript), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("SASS", sassBinary)
+
+	result, err := Build(root, "out")
+	if err != nil {
+		t.Fatal(err)
+	}
+	css, err := os.ReadFile(result.StyleSheets[0].Path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(css) != ".package-style{color:teal}\n" {
+		t.Fatalf("package Sass output = %q", css)
+	}
+	if len(result.Warnings) != 1 || !strings.Contains(result.Warnings[0], "FashionStyle.scss") {
+		t.Fatalf("package Sass warnings = %#v, want FashionStyle.scss to be skipped", result.Warnings)
+	}
+	for _, source := range []string{
+		"sdk/packages/core/sass/src/CoreStyle.scss",
+		"sdk/packages/core/sass/var/colors.scss",
+		"sdk/packages/core/classic/sass/src/CoreClassicStyle.scss",
+		"sdk/packages/exporter/sass/var/colors.scss",
+		"sdk/packages/exporter/sass/src/ExporterStyle.scss",
+		"sdk/packages/exporter/classic/sass/src/ExporterClassicStyle.scss",
+		"sdk/packages/exporter/sass/src/FashionStyle.scss",
+		"sdk/packages/exporter/sass/var/FashionColors.scss",
+	} {
+		found := false
+		for _, watchPath := range result.WatchPaths {
+			if watchPath == filepath.Join(root, filepath.FromSlash(source)) {
+				found = true
+				break
+			}
+		}
+		if !found {
+			t.Errorf("package Sass source %s is missing from watch paths", source)
 		}
 	}
 }
@@ -1177,9 +1268,30 @@ func TestBuildFiltersPackagesForOtherToolkit(t *testing.T) {
 		"app/Empty.js": "",
 	})
 
-	_, err := BuildWithToolkit(root, "out-modern", "modern")
-	if err == nil || !strings.Contains(err.Error(), `required Ext JS package "classic-addon" was not found`) {
-		t.Fatalf("modern build error = %v, want classic-only package to be filtered", err)
+	modern, err := BuildWithToolkit(root, "out-modern", "modern")
+	if err != nil {
+		t.Fatalf("modern build should ignore a classic-only required package: %v", err)
+	}
+	if len(modern.Packages) != 0 {
+		t.Fatalf("modern packages = %#v, want classic-only package to be ignored", modern.Packages)
+	}
+	classicManifest := filepath.Join(root, "sdk", "packages", "classic-addon", "package.json")
+	manifestWatched := false
+	for _, path := range modern.WatchPaths {
+		if path == classicManifest {
+			manifestWatched = true
+			break
+		}
+	}
+	if !manifestWatched {
+		t.Fatalf("classic-only package manifest %s is missing from watch paths", classicManifest)
+	}
+	modernBundle, err := os.ReadFile(modern.OutputPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(modernBundle), "sdk/packages/classic-addon/src/Addon.js") {
+		t.Fatalf("modern build included a classic-only package: %s", modernBundle)
 	}
 
 	classic, err := BuildWithToolkit(root, "out-classic", "classic")
@@ -1195,6 +1307,68 @@ func TestBuildFiltersPackagesForOtherToolkit(t *testing.T) {
 	}
 	if !strings.Contains(string(bundle), "sdk/packages/classic-addon/src/Addon.js") {
 		t.Fatalf("classic-only package source was not bundled: %s", bundle)
+	}
+}
+
+func TestBuildRejectsMissingRequiredPackage(t *testing.T) {
+	root := makeFixture(t, map[string]string{
+		"app.json":                       `{"name":"Example","namespace":"Example","toolkit":"modern","requires":["not-installed"],"classpath":["app"],"js":[{"path":"app.js","bundle":true}]}`,
+		"workspace.json":                 `{"frameworks":{"ext":{"path":"sdk","version":"8.0.0.43"}}}`,
+		"sdk/package.json":               `{"name":"ext","version":"8.0.0.43","compatVersion":"8.0.0"}`,
+		"sdk/modern/modern/package.json": `{"version":"8.0.0.43","sencha":{"name":"modern","classpath":"${package.dir}/src"}}`,
+		"sdk/packages/core/package.json": `{"version":"8.0.0.43","sencha":{"name":"core","classpath":"${package.dir}/src"}}`,
+		"app.js":                         `Ext.application({name: 'Example'});`,
+		"app/Empty.js":                   "",
+	})
+	if _, err := BuildWithToolkit(root, "out", "modern"); err == nil || !strings.Contains(err.Error(), `required Ext JS package "not-installed" was not found`) {
+		t.Fatalf("build error = %v, want missing package diagnostic", err)
+	}
+}
+
+func TestBuildResolvesThemePackageDependencies(t *testing.T) {
+	root := makeFixture(t, map[string]string{
+		"app.json":                                      `{"name":"Example","namespace":"Example","toolkit":"classic","theme":"theme-custom","classpath":["app"],"js":[{"path":"app.js","bundle":true}]}`,
+		"workspace.json":                                `{"frameworks":{"ext":{"path":"sdk","version":"8.0.0.43"}}}`,
+		"sdk/package.json":                              `{"name":"ext","version":"8.0.0.43","compatVersion":"8.0.0"}`,
+		"sdk/packages/core/package.json":                `{"version":"8.0.0.43","sencha":{"name":"core","classpath":"${package.dir}/src"}}`,
+		"sdk/packages/theme-base/package.json":          `{"version":"8.0.0.43","sencha":{"name":"theme-base","extend":"theme-abstract","requires":["core"],"classpath":"${package.dir}/src"}}`,
+		"sdk/packages/theme-abstract/package.json":      `{"version":"8.0.0.43","sencha":{"name":"theme-abstract","classpath":"${package.dir}/src"}}`,
+		"sdk/packages/theme-custom/package.json":        `{"version":"1.0.0","sencha":{"name":"theme-custom","extend":"theme-base","classpath":"${package.dir}/src","resources":[{"path":"${package.dir}/resources","output":"shared"}]}}`,
+		"sdk/classic/classic/package.json":              `{"version":"8.0.0.43","sencha":{"name":"classic","requires":["core"],"classpath":"${package.dir}/src"}}`,
+		"sdk/packages/theme-custom/resources/theme.css": `.custom-theme { color: purple; }`,
+		"app.js":       `Ext.application({name: 'Example'});`,
+		"app/Empty.js": "",
+	})
+
+	result, err := BuildWithToolkit(root, "out", "classic")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := []string{"theme-abstract", "core", "theme-base", "theme-custom"}; !reflect.DeepEqual(result.Packages, want) {
+		t.Fatalf("resolved packages = %#v, want %#v", result.Packages, want)
+	}
+	resource := filepath.Join(root, "out", "resources", "shared", "theme.css")
+	data, err := os.ReadFile(resource)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(data) != ".custom-theme { color: purple; }" {
+		t.Fatalf("copied theme resource = %q", data)
+	}
+	for _, path := range []string{
+		filepath.Join(root, "sdk", "packages", "theme-custom", "package.json"),
+		filepath.Join(root, "sdk", "packages", "theme-custom", "resources"),
+	} {
+		found := false
+		for _, watchPath := range result.WatchPaths {
+			if watchPath == path {
+				found = true
+				break
+			}
+		}
+		if !found {
+			t.Errorf("theme path %s is missing from watch paths", path)
+		}
 	}
 }
 

@@ -20,13 +20,16 @@ type classSourcePath struct {
 }
 
 type packageResolution struct {
-	classpaths []classSourcePath
-	overrides  []classSourcePath
-	resources  []resolvedResource
-	version    string
-	sdkRoot    string
-	packages   []string
-	watchPaths []string
+	classpaths   []classSourcePath
+	overrides    []classSourcePath
+	sassRoots    []packageSassSourceRoot
+	sassVarRoots []string
+	sassWarnings []string
+	resources    []resolvedResource
+	version      string
+	sdkRoot      string
+	packages     []string
+	watchPaths   []string
 }
 
 type workspaceConfig struct {
@@ -44,21 +47,37 @@ type sdkManifest struct {
 	CompatVersion string `json:"compatVersion"`
 }
 
+type packageSassConfig struct {
+	Etc pathList `json:"etc"`
+	Var pathList `json:"var"`
+	Src pathList `json:"src"`
+}
+
+type packageSassSourceRoot struct {
+	SassPath  string
+	ClassPath string
+	Package   string
+}
+
 type packageManifest struct {
-	Version       string   `json:"version"`
-	Name          string   `json:"name"`
-	Toolkit       string   `json:"toolkit"`
-	AlternateName pathList `json:"alternateName"`
-	Requires      pathList `json:"requires"`
-	Classpath     pathList `json:"classpath"`
-	Overrides     pathList `json:"overrides"`
+	Version       string            `json:"version"`
+	Name          string            `json:"name"`
+	Toolkit       string            `json:"toolkit"`
+	Extend        string            `json:"extend"`
+	AlternateName pathList          `json:"alternateName"`
+	Requires      pathList          `json:"requires"`
+	Classpath     pathList          `json:"classpath"`
+	Overrides     pathList          `json:"overrides"`
+	Sass          packageSassConfig `json:"sass"`
 	Sencha        struct {
-		Name          string   `json:"name"`
-		Toolkit       string   `json:"toolkit"`
-		AlternateName pathList `json:"alternateName"`
-		Requires      pathList `json:"requires"`
-		Classpath     pathList `json:"classpath"`
-		Overrides     pathList `json:"overrides"`
+		Name          string            `json:"name"`
+		Toolkit       string            `json:"toolkit"`
+		Extend        string            `json:"extend"`
+		AlternateName pathList          `json:"alternateName"`
+		Requires      pathList          `json:"requires"`
+		Classpath     pathList          `json:"classpath"`
+		Overrides     pathList          `json:"overrides"`
+		Sass          packageSassConfig `json:"sass"`
 		Resource      struct {
 			Paths pathList `json:"paths"`
 		} `json:"resource"`
@@ -73,6 +92,10 @@ type sdkPackage struct {
 }
 
 func resolveAppPackages(appRoot string, required []string, toolkit, locale string) (packageResolution, error) {
+	return resolveAppPackagesWithOptional(appRoot, required, nil, toolkit, locale)
+}
+
+func resolveAppPackagesWithOptional(appRoot string, required, optional []string, toolkit, locale string) (packageResolution, error) {
 	workspacePath := filepath.Join(appRoot, "workspace.json")
 	data, err := os.ReadFile(workspacePath)
 	if err != nil {
@@ -122,7 +145,7 @@ func resolveAppPackages(appRoot string, required []string, toolkit, locale strin
 	}
 
 	resolution := packageResolution{version: sdk.Version, sdkRoot: sdkRoot, watchPaths: []string{workspacePath, manifestPath}}
-	if len(required) == 0 {
+	if len(required) == 0 && len(optional) == 0 {
 		return resolution, nil
 	}
 	packages, err := indexSDKPackages(sdkRoot, toolkit)
@@ -137,6 +160,10 @@ func resolveAppPackages(appRoot string, required []string, toolkit, locale strin
 		if !exists {
 			return fmt.Errorf("required Ext JS package %q was not found in %s", name, sdkRoot)
 		}
+		if toolkit != "" && (pkg.manifest.Sencha.Toolkit == "classic" || pkg.manifest.Sencha.Toolkit == "modern") && pkg.manifest.Sencha.Toolkit != toolkit {
+			resolution.watchPaths = append(resolution.watchPaths, pkg.manifestPath)
+			return nil
+		}
 		key := pkg.root
 		if state[key] == 2 {
 			return nil
@@ -145,6 +172,11 @@ func resolveAppPackages(appRoot string, required []string, toolkit, locale strin
 			return fmt.Errorf("package dependency cycle: %s -> %s", strings.Join(chain, " -> "), name)
 		}
 		state[key] = 1
+		if pkg.manifest.Sencha.Extend != "" {
+			if err := visit(pkg.manifest.Sencha.Extend, append(chain, name)); err != nil {
+				return err
+			}
+		}
 		for _, dependency := range pkg.manifest.Sencha.Requires {
 			if err := visit(dependency, append(chain, name)); err != nil {
 				return err
@@ -155,6 +187,14 @@ func resolveAppPackages(appRoot string, required []string, toolkit, locale strin
 		return nil
 	}
 	for _, name := range required {
+		if err := visit(name, nil); err != nil {
+			return packageResolution{}, err
+		}
+	}
+	for _, name := range optional {
+		if _, exists := packages[name]; !exists {
+			continue
+		}
 		if err := visit(name, nil); err != nil {
 			return packageResolution{}, err
 		}
@@ -176,8 +216,24 @@ func resolveAppPackages(appRoot string, required []string, toolkit, locale strin
 		if err != nil {
 			return packageResolution{}, err
 		}
+		sassRoots, sassWarnings, err := expandPackageClassSassRoots(pkg, toolkit, locale)
+		if err != nil {
+			return packageResolution{}, err
+		}
+		sassVarRoots, err := expandPackagePaths(pkg, pkg.manifest.Sencha.Sass.Var, toolkit, locale)
+		if err != nil {
+			return packageResolution{}, err
+		}
 		resolution.classpaths = append(resolution.classpaths, classpath...)
 		resolution.overrides = append(resolution.overrides, overrides...)
+		resolution.sassRoots = append(resolution.sassRoots, sassRoots...)
+		resolution.sassWarnings = append(resolution.sassWarnings, sassWarnings...)
+		for _, sassVarRoot := range sassVarRoots {
+			if !isPathWithin(sassVarRoot.path, pkg.root) {
+				return packageResolution{}, fmt.Errorf("package %q Sass var path escapes package directory", pkg.manifest.Sencha.Name)
+			}
+			resolution.sassVarRoots = append(resolution.sassVarRoots, sassVarRoot.path)
+		}
 		resourceEntries := append(resourceList{}, pkg.manifest.Sencha.Resources...)
 		for _, path := range pkg.manifest.Sencha.Resource.Paths {
 			if strings.TrimSpace(path) == "" {
@@ -291,6 +347,9 @@ func indexSDKPackages(sdkRoot, toolkit string) (map[string]*sdkPackage, error) {
 			if manifest.Sencha.Toolkit == "" {
 				manifest.Sencha.Toolkit = manifest.Toolkit
 			}
+			if manifest.Sencha.Extend == "" {
+				manifest.Sencha.Extend = manifest.Extend
+			}
 			if manifest.Sencha.AlternateName == nil {
 				manifest.Sencha.AlternateName = manifest.AlternateName
 			}
@@ -303,10 +362,10 @@ func indexSDKPackages(sdkRoot, toolkit string) (map[string]*sdkPackage, error) {
 			if manifest.Sencha.Overrides == nil {
 				manifest.Sencha.Overrides = manifest.Overrides
 			}
-			if manifest.Sencha.Name == "" {
-				continue
+			if len(manifest.Sencha.Sass.Etc)+len(manifest.Sencha.Sass.Var)+len(manifest.Sencha.Sass.Src) == 0 {
+				manifest.Sencha.Sass = manifest.Sass
 			}
-			if (manifest.Sencha.Toolkit == "classic" || manifest.Sencha.Toolkit == "modern") && toolkit != "" && manifest.Sencha.Toolkit != toolkit {
+			if manifest.Sencha.Name == "" {
 				continue
 			}
 			pkg := &sdkPackage{root: root, manifestPath: filepath.Join(root, "package.json"), manifest: manifest}
