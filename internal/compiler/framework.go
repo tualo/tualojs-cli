@@ -45,8 +45,14 @@ type sdkManifest struct {
 }
 
 type packageManifest struct {
-	Version string `json:"version"`
-	Sencha  struct {
+	Version       string   `json:"version"`
+	Name          string   `json:"name"`
+	Toolkit       string   `json:"toolkit"`
+	AlternateName pathList `json:"alternateName"`
+	Requires      pathList `json:"requires"`
+	Classpath     pathList `json:"classpath"`
+	Overrides     pathList `json:"overrides"`
+	Sencha        struct {
 		Name          string   `json:"name"`
 		Toolkit       string   `json:"toolkit"`
 		AlternateName pathList `json:"alternateName"`
@@ -278,6 +284,24 @@ func indexSDKPackages(sdkRoot, toolkit string) (map[string]*sdkPackage, error) {
 			}
 			if err := json.Unmarshal(cleaned, &manifest); err != nil {
 				return nil, fmt.Errorf("parse package manifest in %s: %w", root, err)
+			}
+			if manifest.Sencha.Name == "" {
+				manifest.Sencha.Name = manifest.Name
+			}
+			if manifest.Sencha.Toolkit == "" {
+				manifest.Sencha.Toolkit = manifest.Toolkit
+			}
+			if manifest.Sencha.AlternateName == nil {
+				manifest.Sencha.AlternateName = manifest.AlternateName
+			}
+			if manifest.Sencha.Requires == nil {
+				manifest.Sencha.Requires = manifest.Requires
+			}
+			if manifest.Sencha.Classpath == nil {
+				manifest.Sencha.Classpath = manifest.Classpath
+			}
+			if manifest.Sencha.Overrides == nil {
+				manifest.Sencha.Overrides = manifest.Overrides
 			}
 			if manifest.Sencha.Name == "" {
 				continue

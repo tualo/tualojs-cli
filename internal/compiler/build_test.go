@@ -897,6 +897,43 @@ func TestBuildLoadsTransitiveSDKPackageClasspaths(t *testing.T) {
 	}
 }
 
+func TestBuildLoadsStandardSDKPackageManifestFields(t *testing.T) {
+	root := makeFixture(t, map[string]string{
+		"app.json":                                             `{"name":"Example","namespace":"Example","toolkit":"classic","requires":["exporter"],"classpath":["app"],"js":[{"path":"app.js","bundle":true}]}`,
+		"workspace.json":                                       `{"frameworks":{"ext":{"path":"sdk","version":"8.0.0.43"}}}`,
+		"sdk/package.json":                                     `{"name":"ext","version":"8.0.0.43","compatVersion":"8.0.0"}`,
+		"sdk/packages/core/package.json":                       `{"version":"8.0.0.43","sencha":{"name":"core","classpath":"${package.dir}/src"}}`,
+		"sdk/packages/exporter/package.json":                   `{"name":"exporter","requires":["core"],"classpath":["${package.dir}/src","${package.dir}/${toolkit.name}/src"],"overrides":"${package.dir}/overrides"}`,
+		"sdk/packages/core/src/Core.js":                        `Ext.define('Lib.Core', {});`,
+		"sdk/packages/exporter/src/Exporter.js":                `Ext.define('Lib.Exporter', { extend: 'Lib.Core' });`,
+		"sdk/packages/exporter/classic/src/ExporterClassic.js": `Ext.define('Lib.ExporterClassic', {});`,
+		"sdk/packages/exporter/overrides/ExporterOverride.js":  `Ext.define('Lib.ExporterOverride', {});`,
+		"sdk/classic/classic/package.json":                     `{"version":"8.0.0.43","sencha":{"name":"classic","requires":["core"],"classpath":"${package.dir}/src"}}`,
+		"app.js":                                               `Ext.application({name: 'Example', extend: 'Example.Application'});`,
+		"app/Application.js":                                   `Ext.define('Example.Application', { extend: 'Ext.app.Application', requires: ['Lib.Core', 'Lib.Exporter', 'Lib.ExporterClassic'] });`,
+	})
+
+	result, err := Build(root, "out")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got, want := result.Packages, []string{"core", "exporter"}; !reflect.DeepEqual(got, want) {
+		t.Fatalf("resolved packages = %#v, want %#v", got, want)
+	}
+	bundle, err := os.ReadFile(result.OutputPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, source := range []string{
+		"sdk/packages/exporter/src/Exporter.js",
+		"sdk/packages/exporter/classic/src/ExporterClassic.js",
+	} {
+		if !strings.Contains(string(bundle), "// Source: "+source) {
+			t.Errorf("bundle does not include package source %s", source)
+		}
+	}
+}
+
 func TestBuildResolvesToolkitSpecificPackageRequirements(t *testing.T) {
 	root := makeFixture(t, map[string]string{
 		"app.json":                                          `{"name":"Example","namespace":"Example","toolkit":"modern","requires":["common"],"classic":{"requires":["classic-addon"]},"modern":{"requires":["modern-addon"]},"builds":{"classic":{"toolkit":"classic","requires":["classic-profile-addon"]}},"classpath":["app"],"js":[{"path":"app.js","bundle":true}]}`,

@@ -15,15 +15,16 @@ Pfadlisten wie `classpath`, `overrides` und `requires` akzeptieren sowohl JSON-A
 - Package-Namen aus `app.json.requires` werden gegen Metadaten unter `packages/`, `modern/` und `classic/` im SDK aufgelöst.
 - Packages mit `sencha.toolkit: "classic"` oder `"modern"` werden nur für das passende ausgewählte Toolkit aufgelöst.
 - Zusätzlich werden `requires` aus dem ausgewählten `classic`-/`modern`-Abschnitt und dem gleichnamigen `builds`-Profil berücksichtigt.
-- `sencha.name`, Verzeichnisname und `sencha.alternateName` sind gültige Namen.
-- Transitive Package-Abhängigkeiten aus `sencha.requires` werden zyklusfrei und deterministisch sortiert.
-- `sencha.classpath`- und `sencha.overrides`-Pfade expandieren `${package.dir}` und `${toolkit.name}`. Fehlende toolkit-spezifische Package-Pfade sind optional.
+- `sencha.name` (oder bei Standard-SDK-Manifests das oberste Feld `name`), Verzeichnisname und `alternateName` sind gültige Namen.
+- Transitive Package-Abhängigkeiten aus `sencha.requires` oder dem obersten Feld `requires` werden zyklusfrei und deterministisch sortiert.
+- `sencha.classpath`-/`sencha.overrides`-Pfade sowie die entsprechenden obersten Manifestfelder expandieren `${package.dir}` und `${toolkit.name}`. Fehlende toolkit-spezifische Package-Pfade sind optional.
 - `${package.locale}` wird aus `app.json.locale` expandiert, damit locale-spezifische Package-Overrides gefunden werden.
 - Aufgelöste Package-Quellen nehmen an der gleichen Klassen-, Alias-, Override- und Abhängigkeitsauflösung wie App-Quellen teil.
 
 ## Prüfungen
 
 - Integrationstest mit einem Fake-SDK für SDK-Version, Workspace-JSONC, Package-Aliase, transitive Abhängigkeiten und Classpath-Reihenfolge.
+- Integrationstest für SDK-Package-Manifeste mit Standardfeldern auf Root-Ebene, einschließlich `exporter` und transitivem `core`.
 - Integrationstest für App-Pfadmakros in Classpath, Overrides und Assets.
 - Inkompatible SDK-Kompatibilitätsversionen werden vor dem Build abgewiesen.
 - Das echte Ext-JS-8-Fixture unter `testdata/fixtures/minimal-modern/` löst sein lokales SDK erfolgreich auf.
