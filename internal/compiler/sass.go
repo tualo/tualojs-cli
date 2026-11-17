@@ -285,7 +285,7 @@ func sassSourceIsSassHelper(source []byte) bool {
 	if sassSourceHasNestedMixin(source) || (!sassFunctionDefinition.Match(source) && !sassMixinDefinition.Match(source)) {
 		return false
 	}
-	definitions := sassVariableNames(source)
+	definitions := topLevelSassVariableNames(source)
 	depth := 0
 	for _, line := range strings.Split(string(source), "\n") {
 		trimmed := strings.TrimSpace(line)
@@ -376,7 +376,7 @@ func resolvePackageSassVariables(appRoot string, roots []string, initialVariable
 			if err != nil {
 				return nil, nil, nil, nil, fmt.Errorf("read package Sass var source %s: %w", file, err)
 			}
-			definitions := sassVariableNames(data)
+			definitions := topLevelSassVariableNames(data)
 			if len(definitions) == 0 {
 				continue
 			}
@@ -435,14 +435,14 @@ func sassVariableNullAssignments(source []byte) map[string]bool {
 	if normalized, _, reason := normalizeFashionDynamic(source); reason == "" {
 		source = normalized
 	}
-	for _, line := range strings.Split(string(source), "\n") {
+	walkTopLevelSassLines(source, func(line string) {
 		declaration := sassVariableDeclaration.FindStringSubmatch(line)
 		if declaration == nil {
-			continue
+			return
 		}
 		colon := strings.IndexByte(line, ':')
 		if colon < 0 {
-			continue
+			return
 		}
 		value := strings.TrimSpace(line[colon+1:])
 		if comment := strings.Index(value, "//"); comment >= 0 {
@@ -450,27 +450,32 @@ func sassVariableNullAssignments(source []byte) map[string]bool {
 		}
 		value = strings.TrimSpace(strings.TrimSuffix(value, ";"))
 		assignments[string(declaration[1])] = value == "null"
-	}
+	})
 	return assignments
 }
 
 func sassVariableNullReference(source []byte, nullVariables map[string]bool) string {
-	for _, line := range strings.Split(string(source), "\n") {
+	missing := ""
+	walkTopLevelSassLines(source, func(line string) {
+		if missing != "" {
+			return
+		}
 		if !sassVariableDeclaration.MatchString(line) {
-			continue
+			return
 		}
 		colon := strings.IndexByte(line, ':')
 		if colon < 0 {
-			continue
+			return
 		}
 		for _, match := range sassVariableReference.FindAllSubmatch([]byte(line[colon+1:]), -1) {
 			name := string(match[1])
 			if nullVariables[name] {
-				return name
+				missing = name
+				return
 			}
 		}
-	}
-	return ""
+	})
+	return missing
 }
 
 func collectSassVariableNames(sources []string) (map[string]bool, error) {
@@ -483,7 +488,7 @@ func collectSassVariableNames(sources []string) (map[string]bool, error) {
 		if unsupportedFashionSource(data) != "" {
 			continue
 		}
-		for name := range sassVariableNames(data) {
+		for name := range topLevelSassVariableNames(data) {
 			variables[name] = true
 		}
 	}
@@ -498,20 +503,126 @@ func sassVariableNames(source []byte) map[string]bool {
 	return variables
 }
 
+func walkTopLevelSassLines(source []byte, visit func(string)) {
+	walkSassLinesWithDepth(source, func(line string, braceDepth, parenDepth int) {
+		if braceDepth == 0 && parenDepth == 0 {
+			visit(line)
+		}
+	})
+}
+
+func walkSassLinesWithDepth(source []byte, visit func(string, int, int)) {
+	braceDepth := 0
+	parenDepth := 0
+	quote := byte(0)
+	escaped := false
+	blockComment := false
+	for _, line := range strings.Split(string(source), "\n") {
+		visit(line, braceDepth, parenDepth)
+		for index := 0; index < len(line); index++ {
+			current := line[index]
+			if blockComment {
+				if current == '*' && index+1 < len(line) && line[index+1] == '/' {
+					blockComment = false
+					index++
+				}
+				continue
+			}
+			if quote != 0 {
+				if escaped {
+					escaped = false
+				} else if current == '\\' {
+					escaped = true
+				} else if current == quote {
+					quote = 0
+				}
+				continue
+			}
+			if current == '/' && index+1 < len(line) {
+				if line[index+1] == '/' {
+					break
+				}
+				if line[index+1] == '*' {
+					blockComment = true
+					index++
+					continue
+				}
+			}
+			if current == '\'' || current == '"' {
+				quote = current
+				continue
+			}
+			switch current {
+			case '{':
+				braceDepth++
+			case '}':
+				braceDepth--
+			case '(':
+				parenDepth++
+			case ')':
+				parenDepth--
+			}
+			if braceDepth < 0 {
+				braceDepth = 0
+			}
+			if parenDepth < 0 {
+				parenDepth = 0
+			}
+		}
+	}
+}
+
+func topLevelSassVariableNames(source []byte) map[string]bool {
+	variables := make(map[string]bool)
+	walkTopLevelSassLines(source, func(line string) {
+		for _, match := range sassVariableDeclaration.FindAllSubmatch([]byte(line), -1) {
+			variables[string(match[1])] = true
+		}
+	})
+	return variables
+}
+
+func topLevelSassVariableReferences(source []byte) []string {
+	var references []string
+	assignment := false
+	walkSassLinesWithDepth(source, func(line string, braceDepth, parenDepth int) {
+		atTopLevel := braceDepth == 0 && parenDepth == 0
+		declaration := sassVariableDeclaration.FindStringSubmatch(line)
+		if atTopLevel && declaration != nil {
+			assignment = true
+			colon := strings.IndexByte(line, ':')
+			if colon >= 0 {
+				for _, match := range sassVariableReference.FindAllSubmatch([]byte(line[colon+1:]), -1) {
+					references = append(references, string(match[1]))
+				}
+			}
+		} else if assignment {
+			trimmed := strings.TrimSpace(line)
+			if atTopLevel && (strings.HasPrefix(trimmed, "@") || strings.HasPrefix(trimmed, ".") || strings.HasPrefix(trimmed, "#")) {
+				assignment = false
+			} else {
+				for _, match := range sassVariableReference.FindAllSubmatch([]byte(line), -1) {
+					references = append(references, string(match[1]))
+				}
+			}
+		}
+		if assignment && strings.Contains(line, ";") {
+			assignment = false
+		}
+	})
+	return references
+}
+
 func unsupportedPackageSassVariableSource(source []byte, definitions, available map[string]bool) string {
 	if reason := unsupportedFashionSource(source); reason != "" {
 		return reason
-	}
-	if len(sassMixinInclude.FindAllSubmatch(source, -1)) > 0 {
-		return "Package Sass var mixin includes are not supported"
 	}
 	for _, marker := range []string{"@import", "@use", "@forward", "url("} {
 		if bytes.Contains(source, []byte(marker)) {
 			return "package Sass var uses imports, interpolation or resource URLs not covered by this step"
 		}
 	}
-	for _, match := range sassVariableReference.FindAllSubmatch(source, -1) {
-		name := string(match[1])
+	for _, name := range topLevelSassVariableReferences(source) {
 		if !definitions[name] && !available[name] {
 			return fmt.Sprintf("references undefined package/theme variable $%s", name)
 		}
@@ -912,7 +1023,10 @@ func sassSourceNeedsTrailingSemicolon(source []byte) bool {
 		if line == "" || strings.HasPrefix(line, "//") || strings.HasPrefix(line, "/*") || strings.HasPrefix(line, "*") || strings.HasPrefix(line, "*/") {
 			continue
 		}
-		return line == ")"
+		if strings.HasSuffix(line, ";") || strings.HasSuffix(line, "}") {
+			return false
+		}
+		return len(sassVariableDeclaration.FindAllSubmatch(source, -1)) > 0
 	}
 	return false
 }
@@ -930,7 +1044,7 @@ func sassImportTreeUnresolvedVariable(sources []string, availableVariables map[s
 			return "<unreadable>"
 		}
 		dataBySource[source] = data
-		for name := range sassVariableNames(data) {
+		for name := range topLevelSassVariableNames(data) {
 			definitions[name] = true
 		}
 	}
@@ -1070,7 +1184,7 @@ func compileClassSassWithInlineImports(appRoot string, sources []string, minify 
 				return nil, warnings, fmt.Errorf("normalize Sass imports in %s: %w", source, err)
 			}
 			warnings = append(warnings, importWarnings...)
-			if inlineImports[source] && sassSourceNeedsTrailingSemicolon(normalized) {
+			if (inlineImports[source] || dynamicChanged) && sassSourceNeedsTrailingSemicolon(normalized) {
 				normalized = append(normalized, []byte("\n;\n")...)
 			}
 			entry.Write(normalized)

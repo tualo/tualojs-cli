@@ -36,6 +36,7 @@ Die Implementierung startet mit einem kleinen, durch Tests abgesicherten vertika
 18. **Package-Sass-Mixins** (`docs/18-package-sass-mixins.md`): `@include`-Aufrufe zulassen, wenn das Mixin in den geladenen Package-Sass-Quellen definiert ist.
 19. **Fashion-Dynamic-Sass-Ausdrücke** (`docs/19-fashion-dynamic-ausdruecke.md`): `dynamic()`-Wrapper um einzeilige Sass-kompatible Variablen-Ausdrücke entfernen und mit Dart Sass auswerten.
 20. **Theme-Sass-Imports** (`docs/20-theme-sass-imports.md`): Theme-`sass.etc`-Einstiege und ihre unterstützten Imports nach den Package-Variablen verarbeiten.
+21. **Theme-Function-Kontext** (`docs/21-theme-function-context.md`): Theme-Funktionen vor Sass-Variablen verfügbar machen und Fashion-Kompatibilitätsfälle für importierte Theme-Quellen absichern.
 
 ## Architekturleitplanken
 
