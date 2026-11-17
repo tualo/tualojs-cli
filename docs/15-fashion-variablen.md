@@ -19,4 +19,4 @@ Die Theme-Packages in Ext JS definieren Sass-Variablen häufig als `dynamic($and
 
 ## Grenzen
 
-Fashion-Funktionen, dynamisch berechnete Werte, Imports, Interpolation, Mixins und zyklische oder unbekannte Variablenreferenzen werden weiterhin nicht ausgewertet; betroffene Package-Variablendateien werden mit Warnung übersprungen.
+Fashion-spezifische Funktionen, dynamische Theme-Vererbung, Imports, Interpolation, Mixins und zyklische oder unbekannte Variablenreferenzen werden weiterhin nicht ausgewertet; betroffene Package-Variablendateien werden mit Warnung übersprungen. Sass-kompatible Ausdrücke in `dynamic()`-Zuweisungen sind in Schritt 19 ergänzt.

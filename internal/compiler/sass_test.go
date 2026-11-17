@@ -22,17 +22,21 @@ func TestCompileClassSassReportsMissingDartSass(t *testing.T) {
 	}
 }
 
-func TestNormalizeFashionDynamicLiteralAssignments(t *testing.T) {
+func TestNormalizeFashionDynamicSassExpressions(t *testing.T) {
 	source := []byte(`$color: dynamic(#ddd);
 $spacing: dynamic(12px);
 $enabled: dynamic(true);
 $derived: dynamic($color);
+$mixed: dynamic(mix(#fff, $color, 50%));
+$sum: dynamic(1px + 2px);
+$rounded: dynamic(round(15px * 1.2));
+$implicit-semicolon: dynamic(#123)
 `)
 	got, changed, reason := normalizeFashionDynamic(source)
 	if reason != "" || !changed {
 		t.Fatalf("normalizeFashionDynamic changed=%t, reason=%q", changed, reason)
 	}
-	if want := "$color: #ddd;\n$spacing: 12px;\n$enabled: true;\n$derived: $color;\n"; string(got) != want {
+	if want := "$color: #ddd;\n$spacing: 12px;\n$enabled: true;\n$derived: $color;\n$mixed: mix(#fff, $color, 50%);\n$sum: 1px + 2px;\n$rounded: round(15px * 1.2);\n$implicit-semicolon: #123;\n"; string(got) != want {
 		t.Fatalf("normalized Sass = %q, want %q", got, want)
 	}
 	for _, unsupported := range [][]byte{
@@ -89,9 +93,10 @@ func TestDartSassCompilesDynamicPackageVariableReferences(t *testing.T) {
 	}
 
 	root := makeFixture(t, map[string]string{
-		"theme-child/sass/var/child.scss": `$accent: dynamic($base-color);`,
-		"theme-base/sass/var/base.scss":   `$base-color: dynamic(#246);`,
-		"app/Main.scss":                   `.main { color: $accent; }`,
+		"theme-child/sass/var/child.scss": `$accent: dynamic(mix(#fff, $base-color, 50%));
+$spacing: dynamic(1px + 2px);`,
+		"theme-base/sass/var/base.scss": `$base-color: dynamic(#246);`,
+		"app/Main.scss":                 `.main { color: $accent; margin: $spacing; }`,
 	})
 	variables, _, _, _, err := resolvePackageSassVariables(root, []string{
 		filepath.Join(root, "theme-child", "sass", "var"),
@@ -108,8 +113,8 @@ func TestDartSassCompilesDynamicPackageVariableReferences(t *testing.T) {
 	if len(warnings) != 0 {
 		t.Fatalf("Sass warnings = %#v", warnings)
 	}
-	if !strings.Contains(string(css), "color: #246") {
-		t.Fatalf("compiled CSS = %s, want dynamic variable reference resolved", css)
+	if !strings.Contains(string(css), "color:") || !strings.Contains(string(css), "margin: 3px") {
+		t.Fatalf("compiled CSS = %s, want dynamic Sass expressions evaluated", css)
 	}
 }
 

@@ -19,7 +19,8 @@ var sassVariableDeclaration = regexp.MustCompile(`(?m)^[\t ]*\$([a-zA-Z_][a-zA-Z
 var sassVariableReference = regexp.MustCompile(`\$([a-zA-Z_][a-zA-Z0-9_-]*)`)
 var sassMixinDefinition = regexp.MustCompile(`(?m)^[\t ]*@mixin[\t ]+([a-zA-Z_-][a-zA-Z0-9_-]*)`)
 var sassMixinInclude = regexp.MustCompile(`@include[\t ]+([a-zA-Z_-][a-zA-Z0-9_-]*)`)
-var fashionDynamicVariable = regexp.MustCompile(`^([\t ]*\$[a-zA-Z_][a-zA-Z0-9_-]*[\t ]*:[\t ]*)dynamic\([\t ]*(#[0-9a-fA-F]{3,8}|[-+]?(?:[0-9]+(?:\.[0-9]*)?|\.[0-9]+)(?:[a-zA-Z%]+)?|[a-zA-Z_-][a-zA-Z0-9_-]*|\$[a-zA-Z_][a-zA-Z0-9_-]*|"(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*')[\t ]*\)([\t ]*;[\t ]*(?://.*)?)?$`)
+var fashionDynamicAssignment = regexp.MustCompile(`^[\t ]*\$[a-zA-Z_][a-zA-Z0-9_-]*[\t ]*:[\t ]*dynamic\(`)
+var fashionDynamicSuffix = regexp.MustCompile(`^[\t ]*(?:!default[\t ]*)?;?[\t ]*(?://.*)?$`)
 
 func resolveClassSassSources(appRoot string, sourceRoots []string, ignore []*regexp.Regexp) ([]string, error) {
 	var sources []string
@@ -828,13 +829,64 @@ func normalizeFashionDynamic(source []byte) ([]byte, bool, string) {
 			output.WriteString(line)
 			continue
 		}
-		match := fashionDynamicVariable.FindStringSubmatch(content)
+		match := fashionDynamicAssignment.FindStringIndex(content)
 		if match == nil {
-			return nil, false, "dynamic() requires Fashion dependency evaluation; only simple variable literals are supported"
+			return nil, false, "dynamic() is supported only in simple Sass variable assignments"
 		}
-		output.WriteString(match[1])
-		output.WriteString(match[2])
-		output.WriteString(match[3])
+		prefixEnd := strings.LastIndex(content[:match[1]], "dynamic(")
+		if prefixEnd < 0 {
+			return nil, false, "malformed dynamic() Sass variable assignment"
+		}
+		expressionStart := match[1]
+		depth := 1
+		quote := byte(0)
+		escaped := false
+		closeIndex := -1
+		for index := expressionStart; index < len(content); index++ {
+			current := content[index]
+			if quote != 0 {
+				if escaped {
+					escaped = false
+				} else if current == '\\' {
+					escaped = true
+				} else if current == quote {
+					quote = 0
+				}
+				continue
+			}
+			if current == '\'' || current == '"' {
+				quote = current
+				continue
+			}
+			switch current {
+			case '(':
+				depth++
+			case ')':
+				depth--
+				if depth == 0 {
+					closeIndex = index
+					index = len(content)
+				}
+			}
+		}
+		if closeIndex < 0 {
+			return nil, false, "unterminated dynamic() Sass variable assignment"
+		}
+		expression := strings.TrimSpace(content[expressionStart:closeIndex])
+		suffix := content[closeIndex+1:]
+		if expression == "" || strings.Contains(expression, "dynamic(") || !fashionDynamicSuffix.MatchString(suffix) {
+			return nil, false, "dynamic() expression is outside the supported Sass variable assignment subset"
+		}
+		if !strings.Contains(suffix, ";") {
+			if comment := strings.Index(suffix, "//"); comment >= 0 {
+				suffix = strings.TrimRight(suffix[:comment], "\t ") + "; " + suffix[comment:]
+			} else {
+				suffix = strings.TrimRight(suffix, "\t ") + ";"
+			}
+		}
+		output.WriteString(content[:prefixEnd])
+		output.WriteString(expression)
+		output.WriteString(suffix)
 		output.WriteString(lineEnding)
 		changed = true
 	}

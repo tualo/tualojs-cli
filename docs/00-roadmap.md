@@ -34,6 +34,7 @@ Die Implementierung startet mit einem kleinen, durch Tests abgesicherten vertika
 16. **Package-Sass-`etc`** (`docs/16-package-sass-etc.md`): `sencha.sass.etc`-Einstiegsdateien und unterstützte lokale Imports in den Sass-Kontext aufnehmen.
 17. **Framework-Class-SCSS** (`docs/17-framework-sass-src.md`): `sass.src`-Quellen der toolkit- und core-spezifischen Framework-Packages in die Stylesheet-Pipeline aufnehmen.
 18. **Package-Sass-Mixins** (`docs/18-package-sass-mixins.md`): `@include`-Aufrufe zulassen, wenn das Mixin in den geladenen Package-Sass-Quellen definiert ist.
+19. **Fashion-Dynamic-Sass-Ausdrücke** (`docs/19-fashion-dynamic-ausdruecke.md`): `dynamic()`-Wrapper um einzeilige Sass-kompatible Variablen-Ausdrücke entfernen und mit Dart Sass auswerten.
 
 ## Architekturleitplanken
 
