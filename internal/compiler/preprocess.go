@@ -16,6 +16,10 @@ type featureCondition struct {
 }
 
 func preprocessSencha(source, mode, toolkit string) (string, error) {
+	return preprocessSenchaForTarget(source, mode, toolkit, "")
+}
+
+func preprocessSenchaForTarget(source, mode, toolkit, platform string) (string, error) {
 	if mode != BuildModeDevelopment && mode != BuildModeProduction {
 		return "", fmt.Errorf("unsupported build mode %q", mode)
 	}
@@ -34,9 +38,9 @@ func preprocessSencha(source, mode, toolkit string) (string, error) {
 		active := toolkitActive && featureActive && (debugDepth == 0 || mode == BuildModeDevelopment)
 
 		if toolkitMarker == "open" {
-			conditionActive, err := evaluateToolkitCondition(condition, toolkit)
+			conditionActive, err := evaluateSenchaCondition(condition, toolkit, platform)
 			if err != nil {
-				return "", fmt.Errorf("Sencha toolkit condition %q: %w", condition, err)
+				return "", fmt.Errorf("Sencha condition %q: %w", condition, err)
 			}
 			toolkitConditions = append(toolkitConditions, toolkitCondition{name: condition, active: toolkitActive && conditionActive})
 			output.WriteString(lineEnding)
@@ -116,13 +120,23 @@ func preprocessSencha(source, mode, toolkit string) (string, error) {
 	return output.String(), nil
 }
 
-func evaluateToolkitCondition(condition, toolkit string) (bool, error) {
+func evaluateSenchaCondition(condition, toolkit, platform string) (bool, error) {
 	switch condition {
 	case "classic", "modern":
 		if toolkit == "" {
 			return false, fmt.Errorf("condition %q requires a selected toolkit", condition)
 		}
 		return toolkit == condition, nil
+	case "desktop", "phone", "tablet":
+		if platform == "" {
+			return false, fmt.Errorf("condition %q requires an explicit --platform (desktop, phone, or tablet)", condition)
+		}
+		return platform == condition, nil
+	case "touch":
+		if platform == "" {
+			return false, fmt.Errorf("condition %q requires an explicit --platform (desktop, phone, or tablet)", condition)
+		}
+		return platform == "phone" || platform == "tablet", nil
 	case "nonBrowser", "legacyBrowser":
 		// This compiler currently builds browser applications for modern browsers.
 		return false, nil

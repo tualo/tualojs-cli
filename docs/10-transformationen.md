@@ -15,9 +15,10 @@
 
 - `// <if classic>` und `// <if modern>` schließen Inhalt für das jeweils ausgewählte Toolkit ein.
 - `//<if nonBrowser>` und `//<if legacyBrowser>` werden in Browser-Builds ausgeschlossen.
+- `//<if desktop>`, `//<if phone>` und `//<if tablet>` werden über `--platform` ausgewählt; `//<if touch>` ist für Phone und Tablet aktiv.
 - Die Blöcke werden in Development und Production vor dem Metadatenscan verarbeitet. Dadurch erzeugen inaktive Blöcke keine Klassenabhängigkeiten.
 - Die Markerzeilen selbst werden entfernt; Zeilenumbrüche bleiben zur Stabilisierung der Quellpositionen erhalten.
-- `classic` und `modern` brauchen ein explizit ausgewähltes Toolkit. Unbekannte Bedingungen, nicht passende `</if condition>`-Marker und unausgeglichene Blöcke sind Fehler.
+- `classic` und `modern` brauchen ein explizit ausgewähltes Toolkit; Plattformbedingungen brauchen `--platform desktop|phone|tablet`. Unbekannte Bedingungen, nicht passende `</if condition>`-Marker und unausgeglichene Blöcke sind Fehler.
 - Toolkit-Bedingungen können mit `<debug>`-Blöcken verschachtelt werden.
 
 ## Feature-Blöcke
@@ -33,4 +34,4 @@
 
 ## Grenzen
 
-Plattformbedingungen wie `desktop`/`phone`, weitere Feature-Namen, negierte und zusammengesetzte Ausdrücke, weitere Präprozessoren und Compiler-Makros sind noch nicht umgesetzt.
+Weitere Plattform-Tags, weitere Feature-Namen, negierte und zusammengesetzte Ausdrücke, weitere Präprozessoren und Compiler-Makros sind noch nicht umgesetzt.

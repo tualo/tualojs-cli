@@ -195,9 +195,20 @@ func TestWatcherRebuildsAfterSourceChanges(t *testing.T) {
 		"sdk/modern/modern/package.json":    `{"version":"8.0.0.43","sencha":{"name":"modern","requires":["core"],"classpath":"${package.dir}/src"}}`,
 		"sdk/build/ext-modern-all-debug.js": "window.Ext = window.Ext || {};",
 		"sdk/build/modern/theme-material/resources/theme-material-all.css": "body {}",
-		"app.js":          `Ext.application({name: 'PreviewApp', extend: 'PreviewApp.Main'});`,
-		"app/Main.js":     `Ext.define('PreviewApp.Main', { extend: 'Ext.Panel', title: 'before' });`,
-		"assets/logo.txt": "before",
+		"app.js": `Ext.application({name: 'PreviewApp', extend: 'PreviewApp.Main'});`,
+		"app/Main.js": `Ext.define('PreviewApp.Main', {
+    extend: 'Ext.Panel',
+    title: 'before',
+    //<if phone>
+    requires: ['PreviewApp.PhoneOnly'],
+    //</if phone>
+    //<if desktop>
+    requires: ['PreviewApp.DesktopOnly'],
+    //</if desktop>
+});`,
+		"app/PhoneOnly.js":   `Ext.define('PreviewApp.PhoneOnly', {});`,
+		"app/DesktopOnly.js": `Ext.define('PreviewApp.DesktopOnly', {});`,
+		"assets/logo.txt":    "before",
 	}
 	for name, content := range files {
 		path := filepath.Join(root, name)
@@ -208,13 +219,16 @@ func TestWatcherRebuildsAfterSourceChanges(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	result, err := compiler.BuildWithToolkit(root, "build-go", "modern")
+	result, err := compiler.BuildWithTargetOptions(root, "build-go", "modern", "phone", false, compiler.BuildModeDevelopment, false, false)
 	if err != nil {
 		t.Fatal(err)
 	}
 	initial, err := os.ReadFile(result.OutputPath)
 	if err != nil {
 		t.Fatal(err)
+	}
+	if !strings.Contains(string(initial), "app/PhoneOnly.js") || strings.Contains(string(initial), "app/DesktopOnly.js") {
+		t.Fatalf("initial preview build ignored its phone platform: %s", initial)
 	}
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -223,18 +237,27 @@ func TestWatcherRebuildsAfterSourceChanges(t *testing.T) {
 	done := make(chan struct{})
 	go func() {
 		defer close(done)
-		watch(ctx, Config{AppDir: root, OutDir: "build-go", Toolkit: "modern", Interval: 20 * time.Millisecond}, &current)
+		watch(ctx, Config{AppDir: root, OutDir: "build-go", Toolkit: "modern", Platform: "phone", Interval: 20 * time.Millisecond}, &current)
 	}()
 	time.Sleep(40 * time.Millisecond)
 	mainPath := filepath.Join(root, "app", "Main.js")
-	if err := os.WriteFile(mainPath, []byte(`Ext.define('PreviewApp.Main', { extend: 'Ext.Panel', title: 'after' });`), 0o644); err != nil {
+	if err := os.WriteFile(mainPath, []byte(`Ext.define('PreviewApp.Main', {
+    extend: 'Ext.Panel',
+    title: 'after',
+    //<if phone>
+    requires: ['PreviewApp.PhoneOnly'],
+    //</if phone>
+    //<if desktop>
+    requires: ['PreviewApp.DesktopOnly'],
+    //</if desktop>
+});`), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	deadline := time.Now().Add(2 * time.Second)
 	built := false
 	for time.Now().Before(deadline) {
 		updated, err := os.ReadFile(result.OutputPath)
-		if err == nil && strings.Contains(string(updated), "title: 'after'") {
+		if err == nil && strings.Contains(string(updated), "title: 'after'") && strings.Contains(string(updated), "app/PhoneOnly.js") && !strings.Contains(string(updated), "app/DesktopOnly.js") {
 			built = true
 			break
 		}

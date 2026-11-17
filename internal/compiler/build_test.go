@@ -155,6 +155,46 @@ func TestBuildPreprocessesToolkitConditionDependencies(t *testing.T) {
 	}
 }
 
+func TestBuildPreprocessesPlatformConditionDependencies(t *testing.T) {
+	root := makeFixture(t, map[string]string{
+		"app.json": `{"name":"Example","namespace":"Example","classpath":["app"],"js":[{"path":"app.js","bundle":true}]}`,
+		"app.js":   `Ext.application({name: 'Example', extend: 'Example.Application'});`,
+		"app/Application.js": `Ext.define('Example.Application', {
+    extend: 'Ext.app.Application',
+    //<if desktop>
+    requires: ['Example.DesktopOnly'],
+    //</if desktop>
+    //<if phone>
+    requires: ['Example.PhoneOnly'],
+    //</if phone>
+});`,
+		"app/DesktopOnly.js": `Ext.define('Example.DesktopOnly', {});`,
+		"app/PhoneOnly.js":   `Ext.define('Example.PhoneOnly', {});`,
+	})
+
+	for _, test := range []struct {
+		platform string
+		present  string
+		absent   string
+	}{
+		{platform: "desktop", present: "app/DesktopOnly.js", absent: "app/PhoneOnly.js"},
+		{platform: "phone", present: "app/PhoneOnly.js", absent: "app/DesktopOnly.js"},
+	} {
+		result, err := BuildWithTargetOptions(root, "out-"+test.platform, "classic", test.platform, false, BuildModeDevelopment, false, false)
+		if err != nil {
+			t.Fatalf("build %s: %v", test.platform, err)
+		}
+		bundle, err := os.ReadFile(result.OutputPath)
+		if err != nil {
+			t.Fatal(err)
+		}
+		content := string(bundle)
+		if !strings.Contains(content, "// Source: "+test.present) || strings.Contains(content, "// Source: "+test.absent) {
+			t.Errorf("%s build selected wrong platform dependencies: %s", test.platform, content)
+		}
+	}
+}
+
 func TestBuildRejectsDependencyCycle(t *testing.T) {
 	root := makeFixture(t, map[string]string{
 		"app.json": `{"name":"Example","namespace":"Example","classpath":["app"],"js":[{"path":"app.js","bundle":true}]}`,

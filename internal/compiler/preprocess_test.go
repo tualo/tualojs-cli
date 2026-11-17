@@ -147,6 +147,51 @@ after();
 	}
 }
 
+func TestPreprocessPlatformConditions(t *testing.T) {
+	source := `before();
+//<if desktop>
+desktopOnly();
+//</if desktop>
+//<if phone>
+phoneOnly();
+//</if phone>
+//<if tablet>
+tabletOnly();
+//</if tablet>
+//<if touch>
+touchOnly();
+//</if touch>
+after();
+`
+	for _, test := range []struct {
+		platform string
+		present  []string
+		absent   []string
+	}{
+		{platform: "desktop", present: []string{"desktopOnly();"}, absent: []string{"phoneOnly();", "tabletOnly();", "touchOnly();"}},
+		{platform: "phone", present: []string{"phoneOnly();", "touchOnly();"}, absent: []string{"desktopOnly();", "tabletOnly();"}},
+		{platform: "tablet", present: []string{"tabletOnly();", "touchOnly();"}, absent: []string{"desktopOnly();", "phoneOnly();"}},
+	} {
+		got, err := preprocessSenchaForTarget(source, BuildModeProduction, "classic", test.platform)
+		if err != nil {
+			t.Fatalf("preprocess for %s: %v", test.platform, err)
+		}
+		for _, expected := range test.present {
+			if !strings.Contains(got, expected) {
+				t.Errorf("%s output missing %q: %s", test.platform, expected, got)
+			}
+		}
+		for _, unexpected := range test.absent {
+			if strings.Contains(got, unexpected) {
+				t.Errorf("%s output unexpectedly contains %q: %s", test.platform, unexpected, got)
+			}
+		}
+	}
+	if _, err := preprocessSenchaForTarget("//<if desktop>\ndesktopOnly();\n//</if>\n", BuildModeProduction, "classic", ""); err == nil {
+		t.Fatal("platform condition without an explicit platform should fail")
+	}
+}
+
 func TestPreprocessRejectsUnsupportedOrUnresolvedToolkitConditions(t *testing.T) {
 	for _, test := range []struct {
 		source, toolkit string

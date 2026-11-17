@@ -17,6 +17,7 @@ Danach die im Terminal angezeigte lokale URL öffnen. Mit `Ctrl+C` wird der Serv
 
 - Führt beim Start einen Go-Build aus.
 - Verwendet standardmäßig `development`; `-mode production` aktiviert die Production-Präprozessorregeln.
+- `-platform desktop|phone|tablet` wählt optionale Sencha-Plattformbedingungen aus; ohne die Option führen Plattformmarker zu einer Diagnose statt zu einer impliziten Auswahl.
 - Liefert eine Preview-Seite, das zum Toolkit passende Ext-JS-Debug-Runtime-Script aus dem konfigurierten SDK, dessen Theme-CSS, das Go-Bundle und statische App-Dateien aus.
 - Liefert kopierte `app.json.resources` unter `/resources/` aus und beobachtet Änderungen in diesen Quellpfaden.
 - Kopiert und verlinkt lokale statische CSS-Einträge aus `app.json.css`.

@@ -87,11 +87,18 @@ func BuildWithSourceMap(appDir, outputDir, selectedToolkit string, normalizeLetC
 }
 
 func BuildWithOutputOptions(appDir, outputDir, selectedToolkit string, normalizeLetConst bool, mode string, includeSourceMap, minify bool) (BuildResult, error) {
+	return BuildWithTargetOptions(appDir, outputDir, selectedToolkit, "", normalizeLetConst, mode, includeSourceMap, minify)
+}
+
+func BuildWithTargetOptions(appDir, outputDir, selectedToolkit, selectedPlatform string, normalizeLetConst bool, mode string, includeSourceMap, minify bool) (BuildResult, error) {
 	if mode == "" {
 		mode = BuildModeDevelopment
 	}
 	if mode != BuildModeDevelopment && mode != BuildModeProduction {
 		return BuildResult{}, fmt.Errorf("unsupported build mode %q (expected development or production)", mode)
+	}
+	if selectedPlatform != "" && selectedPlatform != "desktop" && selectedPlatform != "phone" && selectedPlatform != "tablet" {
+		return BuildResult{}, fmt.Errorf("unsupported platform %q (expected desktop, phone, or tablet)", selectedPlatform)
 	}
 	config, root, err := loadAppConfig(appDir)
 	if err != nil {
@@ -187,7 +194,7 @@ func BuildWithOutputOptions(appDir, outputDir, selectedToolkit string, normalize
 	if err != nil {
 		return BuildResult{}, fmt.Errorf("read JavaScript entry %s: %w", entryPath, err)
 	}
-	entrySource, err := preprocessSencha(string(entryOriginalData), mode, toolkit)
+	entrySource, err := preprocessSenchaForTarget(string(entryOriginalData), mode, toolkit, selectedPlatform)
 	if err != nil {
 		return BuildResult{}, fmt.Errorf("preprocess JavaScript entry %s: %w", entryPath, err)
 	}
@@ -247,7 +254,7 @@ func BuildWithOutputOptions(appDir, outputDir, selectedToolkit string, normalize
 		}
 	}
 	watchPaths = uniquePaths(watchPaths)
-	sources, classes, overrides, aliases, frameworkFiles, err := loadClasses(paths, mode, root, toolkit, ignorePatterns)
+	sources, classes, overrides, aliases, frameworkFiles, err := loadClasses(paths, mode, root, toolkit, selectedPlatform, ignorePatterns)
 	if err != nil {
 		return BuildResult{}, err
 	}
@@ -506,7 +513,7 @@ func bundleEntry(config appConfig) (string, error) {
 	return entries[0], nil
 }
 
-func loadClasses(paths []classSourcePath, mode, appRoot, toolkit string, ignore []*regexp.Regexp) ([]sourceFile, map[string]sourceFile, map[string][]overrideDeclaration, map[string][]string, map[string]string, error) {
+func loadClasses(paths []classSourcePath, mode, appRoot, toolkit, platform string, ignore []*regexp.Regexp) ([]sourceFile, map[string]sourceFile, map[string][]overrideDeclaration, map[string][]string, map[string]string, error) {
 	var sources []sourceFile
 	seenSources := make(map[string]int)
 	for priority, sourcePath := range paths {
@@ -526,7 +533,7 @@ func loadClasses(paths []classSourcePath, mode, appRoot, toolkit string, ignore 
 				continue
 			}
 			if strings.EqualFold(filepath.Ext(path), ".js") {
-				if err := appendUniqueSource(sourcePath.base, path, sourcePath.prefix, priority, sourcePath.framework, sourcePath.alwaysInclude, mode, toolkit, &sources, seenSources); err != nil {
+				if err := appendUniqueSource(sourcePath.base, path, sourcePath.prefix, priority, sourcePath.framework, sourcePath.alwaysInclude, mode, toolkit, platform, &sources, seenSources); err != nil {
 					return nil, nil, nil, nil, nil, err
 				}
 			}
@@ -545,7 +552,7 @@ func loadClasses(paths []classSourcePath, mode, appRoot, toolkit string, ignore 
 			if isIgnoredProjectPath(appRoot, filePath, ignore) {
 				return nil
 			}
-			return appendUniqueSource(sourcePath.base, filePath, sourcePath.prefix, priority, sourcePath.framework, sourcePath.alwaysInclude, mode, toolkit, &sources, seenSources)
+			return appendUniqueSource(sourcePath.base, filePath, sourcePath.prefix, priority, sourcePath.framework, sourcePath.alwaysInclude, mode, toolkit, platform, &sources, seenSources)
 		})
 		if err != nil {
 			return nil, nil, nil, nil, nil, fmt.Errorf("scan source path %q: %w", sourcePath.path, err)
@@ -680,7 +687,7 @@ func preferredCandidate(candidates []classCandidate) (string, bool) {
 	return preferred[0].source.path, true
 }
 
-func appendUniqueSource(root, path, prefix string, priority int, framework, alwaysInclude bool, mode, toolkit string, sources *[]sourceFile, seen map[string]int) error {
+func appendUniqueSource(root, path, prefix string, priority int, framework, alwaysInclude bool, mode, toolkit, platform string, sources *[]sourceFile, seen map[string]int) error {
 	absolute, err := filepath.Abs(path)
 	if err != nil {
 		return err
@@ -694,20 +701,20 @@ func appendUniqueSource(root, path, prefix string, priority int, framework, alwa
 		}
 		return nil
 	}
-	if err := appendSource(root, absolute, prefix, priority, framework, alwaysInclude, mode, toolkit, sources); err != nil {
+	if err := appendSource(root, absolute, prefix, priority, framework, alwaysInclude, mode, toolkit, platform, sources); err != nil {
 		return err
 	}
 	seen[absolute] = len(*sources) - 1
 	return nil
 }
 
-func appendSource(root, path, prefix string, priority int, framework, alwaysInclude bool, mode, toolkit string, sources *[]sourceFile) error {
+func appendSource(root, path, prefix string, priority int, framework, alwaysInclude bool, mode, toolkit, platform string, sources *[]sourceFile) error {
 	data, err := os.ReadFile(path)
 	if err != nil {
 		return fmt.Errorf("read source %s: %w", path, err)
 	}
 	originalData := append([]byte(nil), data...)
-	processed, err := preprocessSencha(string(data), mode, toolkit)
+	processed, err := preprocessSenchaForTarget(string(data), mode, toolkit, platform)
 	if err != nil {
 		return fmt.Errorf("preprocess source %s: %w", path, err)
 	}

@@ -22,6 +22,7 @@ type Config struct {
 	AppDir            string
 	OutDir            string
 	Toolkit           string
+	Platform          string
 	NormalizeLetConst bool
 	Mode              string
 	SourceMap         bool
@@ -53,7 +54,7 @@ func Run(ctx context.Context, config Config) error {
 		config.Mode = compiler.BuildModeDevelopment
 	}
 
-	result, err := compiler.BuildWithOutputOptions(config.AppDir, config.OutDir, config.Toolkit, config.NormalizeLetConst, config.Mode, config.SourceMap, config.Minify)
+	result, err := compiler.BuildWithTargetOptions(config.AppDir, config.OutDir, config.Toolkit, config.Platform, config.NormalizeLetConst, config.Mode, config.SourceMap, config.Minify)
 	if err != nil {
 		return err
 	}
@@ -375,7 +376,7 @@ func watch(ctx context.Context, config Config, current *atomic.Pointer[previewSt
 			if snapshotsEqual(snapshot, fileSnapshot(state.result.WatchPaths, filepath.Dir(state.result.OutputPath))) {
 				continue
 			}
-			result, err := compiler.BuildWithOutputOptions(config.AppDir, config.OutDir, config.Toolkit, config.NormalizeLetConst, config.Mode, config.SourceMap, config.Minify)
+			result, err := compiler.BuildWithTargetOptions(config.AppDir, config.OutDir, config.Toolkit, config.Platform, config.NormalizeLetConst, config.Mode, config.SourceMap, config.Minify)
 			if err != nil {
 				log.Printf("rebuild failed: %v", err)
 				snapshot = fileSnapshot(state.result.WatchPaths, filepath.Dir(state.result.OutputPath))

@@ -43,6 +43,7 @@ func runBuild(args []string) error {
 	appDir := flags.String("app", ".", "Ext JS application directory containing app.json")
 	outDir := flags.String("out", "build-go", "output directory for the JavaScript bundle")
 	toolkit := flags.String("toolkit", "", "toolkit for universal apps (classic or modern)")
+	platform := flags.String("platform", "", "platform target for Sencha conditions (desktop, phone, or tablet)")
 	normalizeLetConst := flags.Bool("normalize-let-const", false, "lower direct function-scope let/const declarations to var")
 	mode := flags.String("mode", compiler.BuildModeDevelopment, "build mode (development or production)")
 	sourceMap := flags.Bool("source-map", false, "write an app.js.map source map")
@@ -57,7 +58,7 @@ func runBuild(args []string) error {
 		return fmt.Errorf("unexpected arguments: %v", flags.Args())
 	}
 
-	result, err := compiler.BuildWithOutputOptions(*appDir, *outDir, *toolkit, *normalizeLetConst, *mode, *sourceMap, *minify)
+	result, err := compiler.BuildWithTargetOptions(*appDir, *outDir, *toolkit, *platform, *normalizeLetConst, *mode, *sourceMap, *minify)
 	if err != nil {
 		return err
 	}
@@ -82,6 +83,7 @@ func runWatch(args []string) error {
 	appDir := flags.String("app", ".", "Ext JS application directory containing app.json")
 	outDir := flags.String("out", "build-go", "output directory for the JavaScript bundle")
 	toolkit := flags.String("toolkit", "", "toolkit for universal apps (classic or modern)")
+	platform := flags.String("platform", "", "platform target for Sencha conditions (desktop, phone, or tablet)")
 	normalizeLetConst := flags.Bool("normalize-let-const", false, "lower direct function-scope let/const declarations to var")
 	mode := flags.String("mode", compiler.BuildModeDevelopment, "build mode (development or production)")
 	sourceMap := flags.Bool("source-map", false, "write an app.js.map source map")
@@ -103,6 +105,7 @@ func runWatch(args []string) error {
 		AppDir:            *appDir,
 		OutDir:            *outDir,
 		Toolkit:           *toolkit,
+		Platform:          *platform,
 		NormalizeLetConst: *normalizeLetConst,
 		Mode:              *mode,
 		SourceMap:         *sourceMap,
@@ -114,6 +117,6 @@ func runWatch(args []string) error {
 
 func printUsage(w *os.File) {
 	fmt.Fprintln(w, "Usage:")
-	fmt.Fprintln(w, "  extjsc build [-app <directory>] [-out <directory>] [-toolkit classic|modern] [-mode development|production] [-normalize-let-const] [-minify] [-source-map]")
-	fmt.Fprintln(w, "  extjsc watch [-app <directory>] [-out <directory>] [-toolkit classic|modern] [-mode development|production] [-normalize-let-const] [-minify] [-source-map] [-addr 127.0.0.1:1841]")
+	fmt.Fprintln(w, "  extjsc build [-app <directory>] [-out <directory>] [-toolkit classic|modern] [-platform desktop|phone|tablet] [-mode development|production] [-normalize-let-const] [-minify] [-source-map]")
+	fmt.Fprintln(w, "  extjsc watch [-app <directory>] [-out <directory>] [-toolkit classic|modern] [-platform desktop|phone|tablet] [-mode development|production] [-normalize-let-const] [-minify] [-source-map] [-addr 127.0.0.1:1841]")
 }
