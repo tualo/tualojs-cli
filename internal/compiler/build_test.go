@@ -906,11 +906,12 @@ func TestBuildLoadsStandardSDKPackageManifestFields(t *testing.T) {
 		"sdk/packages/exporter/package.json":                   `{"name":"exporter","requires":["core"],"classpath":["${package.dir}/src","${package.dir}/${toolkit.name}/src"],"overrides":"${package.dir}/overrides"}`,
 		"sdk/packages/core/src/Core.js":                        `Ext.define('Lib.Core', {});`,
 		"sdk/packages/exporter/src/Exporter.js":                `Ext.define('Lib.Exporter', { extend: 'Lib.Core' });`,
+		"sdk/packages/exporter/src/Widget.js":                  `Ext.define('Lib.Widget', {});`,
 		"sdk/packages/exporter/classic/src/ExporterClassic.js": `Ext.define('Lib.ExporterClassic', {});`,
-		"sdk/packages/exporter/overrides/ExporterOverride.js":  `Ext.define('Lib.ExporterOverride', {});`,
+		"sdk/packages/exporter/overrides/WidgetOverride.js":    `Ext.define('Lib.overrides.Widget', { override: 'Lib.Widget', packageOverride: true });`,
 		"sdk/classic/classic/package.json":                     `{"version":"8.0.0.43","sencha":{"name":"classic","requires":["core"],"classpath":"${package.dir}/src"}}`,
 		"app.js":                                               `Ext.application({name: 'Example', extend: 'Example.Application'});`,
-		"app/Application.js":                                   `Ext.define('Example.Application', { extend: 'Ext.app.Application', requires: ['Lib.Core', 'Lib.Exporter', 'Lib.ExporterClassic'] });`,
+		"app/Application.js":                                   `Ext.define('Example.Application', { extend: 'Ext.app.Application', requires: ['Lib.Core', 'Lib.Exporter', 'Lib.ExporterClassic', 'Lib.Widget'] });`,
 	})
 
 	result, err := Build(root, "out")
@@ -927,10 +928,17 @@ func TestBuildLoadsStandardSDKPackageManifestFields(t *testing.T) {
 	for _, source := range []string{
 		"sdk/packages/exporter/src/Exporter.js",
 		"sdk/packages/exporter/classic/src/ExporterClassic.js",
+		"sdk/packages/exporter/src/Widget.js",
+		"sdk/packages/exporter/overrides/WidgetOverride.js",
 	} {
 		if !strings.Contains(string(bundle), "// Source: "+source) {
 			t.Errorf("bundle does not include package source %s", source)
 		}
+	}
+	widget := strings.Index(string(bundle), "// Source: sdk/packages/exporter/src/Widget.js")
+	override := strings.Index(string(bundle), "// Source: sdk/packages/exporter/overrides/WidgetOverride.js")
+	if widget < 0 || override < 0 || widget >= override {
+		t.Fatalf("package override should follow its target class: widget=%d override=%d", widget, override)
 	}
 }
 

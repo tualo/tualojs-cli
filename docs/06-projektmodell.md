@@ -18,6 +18,7 @@ Pfadlisten wie `classpath`, `overrides` und `requires` akzeptieren sowohl JSON-A
 - `sencha.name` (oder bei Standard-SDK-Manifests das oberste Feld `name`), Verzeichnisname und `alternateName` sind gültige Namen.
 - Transitive Package-Abhängigkeiten aus `sencha.requires` oder dem obersten Feld `requires` werden zyklusfrei und deterministisch sortiert.
 - `sencha.classpath`-/`sencha.overrides`-Pfade sowie die entsprechenden obersten Manifestfelder expandieren `${package.dir}` und `${toolkit.name}`. Fehlende toolkit-spezifische Package-Pfade sind optional.
+- SDK-Package-Overrides aus diesen Pfaden werden nur bei geladenem Ziel in das Bundle aufgenommen.
 - `${package.locale}` wird aus `app.json.locale` expandiert, damit locale-spezifische Package-Overrides gefunden werden.
 - Aufgelöste Package-Quellen nehmen an der gleichen Klassen-, Alias-, Override- und Abhängigkeitsauflösung wie App-Quellen teil.
 
