@@ -14,6 +14,7 @@ type appConfig struct {
 	Namespace  string                  `json:"namespace"`
 	Toolkit    string                  `json:"toolkit"`
 	Theme      string                  `json:"theme"`
+	Locale     string                  `json:"locale"`
 	Classpath  pathList                `json:"classpath"`
 	Overrides  pathList                `json:"overrides"`
 	Requires   pathList                `json:"requires"`

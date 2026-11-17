@@ -121,6 +121,9 @@ func BuildWithOutputOptions(appDir, outputDir, selectedToolkit string, normalize
 	if err != nil {
 		return BuildResult{}, err
 	}
+	if toolkit == "" && len(config.Requires) > 0 {
+		return BuildResult{}, fmt.Errorf("app package resolution requires a toolkit; pass -toolkit classic or -toolkit modern")
+	}
 	resources, resourceWatchPaths, err := resolveResources(root, config.Name, mode, config.Resources, toolkit)
 	if err != nil {
 		return BuildResult{}, err
@@ -129,7 +132,7 @@ func BuildWithOutputOptions(appDir, outputDir, selectedToolkit string, normalize
 	if err != nil {
 		return BuildResult{}, err
 	}
-	appPackages, err := resolveAppPackages(root, config.Requires, toolkit)
+	appPackages, err := resolveAppPackages(root, config.Requires, toolkit, config.Locale)
 	if err != nil {
 		return BuildResult{}, err
 	}
@@ -139,7 +142,7 @@ func BuildWithOutputOptions(appDir, outputDir, selectedToolkit string, normalize
 		if toolkit == "" {
 			return BuildResult{}, fmt.Errorf("framework class resolution requires a toolkit; pass -toolkit classic or -toolkit modern")
 		}
-		frameworkPackages, err = resolveAppPackages(root, []string{toolkit}, toolkit)
+		frameworkPackages, err = resolveAppPackages(root, []string{toolkit}, toolkit, config.Locale)
 		if err != nil {
 			return BuildResult{}, fmt.Errorf("resolve framework toolkit classes: %w", err)
 		}

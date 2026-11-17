@@ -617,7 +617,7 @@ func TestBuildWarnsForUnresolvedApplicationClass(t *testing.T) {
 
 func TestBuildLoadsTransitiveSDKPackageClasspaths(t *testing.T) {
 	root := makeFixture(t, map[string]string{
-		"app.json": `{"name":"Example","namespace":"Example","requires":["widget-alias"],"classpath":["app"],"js":[{"path":"app.js","bundle":true}]}`,
+		"app.json": `{"name":"Example","namespace":"Example","locale":"de","requires":["widget-alias","ext-locale"],"classpath":["app"],"js":[{"path":"app.js","bundle":true}]}`,
 		"workspace.json": `{
 // local workspace configuration
 "frameworks": {"ext": {"path": "sdk", "version": "8.0.0.43"}}
@@ -627,6 +627,7 @@ func TestBuildLoadsTransitiveSDKPackageClasspaths(t *testing.T) {
 		"sdk/modern/modern/package.json":        `{"version":"8.0.0.43","sencha":{"name":"modern","requires":["core"],"classpath":"${package.dir}/src"}}`,
 		"sdk/packages/base-lib/package.json":    `{"version":"1.0.0","sencha":{"name":"base-lib","classpath":"${package.dir}/src"}}`,
 		"sdk/packages/widget-lib/package.json":  `{"version":"1.0.0","sencha":{"name":"widget-lib","alternateName":["widget-alias"],"requires":["base-lib"],"classpath":["${package.dir}/src","${package.dir}/${toolkit.name}/src"],"resources":[{"path":"${package.dir}/resources","output":"shared"}]}}`,
+		"sdk/modern/locale/package.json":        `{"version":"8.0.0.43","sencha":{"name":"locale","alternateName":["ext-locale"],"classpath":"${package.dir}/src","overrides":"${package.dir}/overrides/${package.locale}"}}`,
 		"sdk/packages/base-lib/src/Base.js":     `Ext.define('Lib.Base', { extend: 'Ext.Base' });`,
 		"sdk/packages/widget-lib/src/Widget.js": `Ext.define('Lib.Widget', { extend: 'Lib.Base' });`,
 		"sdk/packages/widget-lib/src/draw/AnimationParser.js": `Ext.define('Ext.draw.sprite.AnimationParser', function () {
@@ -634,6 +635,7 @@ func TestBuildLoadsTransitiveSDKPackageClasspaths(t *testing.T) {
 });`,
 		"sdk/packages/widget-lib/modern/src/Toolkit.js": `Ext.define('Lib.Toolkit', { extend: 'Lib.Base' });`,
 		"sdk/packages/widget-lib/resources/icon.txt":    "package resource",
+		"sdk/modern/locale/overrides/de/Button.js":      `Ext.define('Ext.locale.de.Button', { override: 'Ext.Button' });`,
 		"app.js": `Ext.application({name: 'Example', extend: 'Example.Application'}); Ext.require('Ext.*');`,
 		"app/Application.js": `Ext.define('Example.Application', {
     extend: 'Ext.app.Application',
@@ -641,7 +643,7 @@ func TestBuildLoadsTransitiveSDKPackageClasspaths(t *testing.T) {
 });`,
 		"app/view/Main.js": `Ext.define('Example.view.Main', {
     extend: 'Ext.Panel',
-    requires: ['Lib.Widget', 'Lib.Toolkit']
+    requires: ['Lib.Widget', 'Lib.Toolkit', 'Ext.Button']
 });`,
 	})
 
@@ -655,7 +657,7 @@ func TestBuildLoadsTransitiveSDKPackageClasspaths(t *testing.T) {
 	if result.FrameworkVersion != "8.0.0.43" {
 		t.Fatalf("framework version = %q, want 8.0.0.43", result.FrameworkVersion)
 	}
-	if got, want := result.Packages, []string{"base-lib", "widget-lib"}; !reflect.DeepEqual(got, want) {
+	if got, want := result.Packages, []string{"base-lib", "widget-lib", "locale"}; !reflect.DeepEqual(got, want) {
 		t.Fatalf("resolved packages = %#v, want %#v", got, want)
 	}
 	if result.ResourceFiles != 1 {
@@ -681,6 +683,9 @@ func TestBuildLoadsTransitiveSDKPackageClasspaths(t *testing.T) {
 	}
 	if !strings.Contains(content, "// Source: sdk/packages/widget-lib/src/draw/AnimationParser.js") {
 		t.Fatal("factory-defined class was not included by Ext.* wildcard")
+	}
+	if !strings.Contains(content, "// Source: sdk/modern/locale/overrides/de/Button.js") {
+		t.Fatal("locale-specific package override was not included")
 	}
 }
 

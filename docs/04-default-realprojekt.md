@@ -12,6 +12,7 @@ Das zugehörige `workspace.json` nennt aktuell Ext JS **8.0.0.43** und passt dam
 - Expansion von `${toolkit.name}` in `classpath` und `overrides`; nicht vorhandene optionale Override-Verzeichnisse werden übersprungen.
 - Namespace-Wildcards wie `Tualo.*` laden deterministisch alle passenden App-Klassen; `Ext.*` wird gegen den ausgewählten Ext-SDK-Classpath aufgelöst.
 - Package-Klassen mit `Ext.define('Name', function () { return {...}; })`, darunter `AnimationParser` und `TimingFunctions` aus `charts`, werden ebenfalls indiziert.
+- `app.json.locale` expandiert locale-spezifische Package-Overrides; der Classic-Build nimmt damit die deutschen Ext-Locale-Dateien aus dem SDK auf.
 - Statische `mixins`-Arrays und -Objekte bilden Abhängigkeiten; dadurch steht `ControllerTools.js` vor `Controller.js` im Bundle.
 - Classpath-Priorität entscheidet zwischen Toolkit- und gemeinsamen Klassen. Bei Backup-Dateien mit doppelten Klassennamen wird ein eindeutiger kanonischer Dateiname wie `Store.js` bevorzugt.
 - Nicht gefundene App-Klassen werden als Warnungen ausgegeben, da sie über dynamische Loader-Pfade nachgeladen werden können.

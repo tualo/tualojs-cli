@@ -12,6 +12,7 @@ Der Compiler liest `workspace.json` im App-Verzeichnis und folgt `frameworks.ext
 - `sencha.name`, Verzeichnisname und `sencha.alternateName` sind gültige Namen.
 - Transitive Package-Abhängigkeiten aus `sencha.requires` werden zyklusfrei und deterministisch sortiert.
 - `sencha.classpath`- und `sencha.overrides`-Pfade expandieren `${package.dir}` und `${toolkit.name}`. Fehlende toolkit-spezifische Package-Pfade sind optional.
+- `${package.locale}` wird aus `app.json.locale` expandiert, damit locale-spezifische Package-Overrides gefunden werden.
 - Aufgelöste Package-Quellen nehmen an der gleichen Klassen-, Alias-, Override- und Abhängigkeitsauflösung wie App-Quellen teil.
 
 ## Prüfungen

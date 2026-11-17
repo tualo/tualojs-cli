@@ -61,7 +61,7 @@ type sdkPackage struct {
 	manifest     packageManifest
 }
 
-func resolveAppPackages(appRoot string, required []string, toolkit string) (packageResolution, error) {
+func resolveAppPackages(appRoot string, required []string, toolkit, locale string) (packageResolution, error) {
 	workspacePath := filepath.Join(appRoot, "workspace.json")
 	data, err := os.ReadFile(workspacePath)
 	if err != nil {
@@ -157,17 +157,17 @@ func resolveAppPackages(appRoot string, required []string, toolkit string) (pack
 			seenNames[name] = true
 		}
 		resolution.watchPaths = append(resolution.watchPaths, pkg.manifestPath)
-		classpath, err := expandPackagePaths(pkg, pkg.manifest.Sencha.Classpath, toolkit)
+		classpath, err := expandPackagePaths(pkg, pkg.manifest.Sencha.Classpath, toolkit, locale)
 		if err != nil {
 			return packageResolution{}, err
 		}
-		overrides, err := expandPackagePaths(pkg, pkg.manifest.Sencha.Overrides, toolkit)
+		overrides, err := expandPackagePaths(pkg, pkg.manifest.Sencha.Overrides, toolkit, locale)
 		if err != nil {
 			return packageResolution{}, err
 		}
 		resolution.classpaths = append(resolution.classpaths, classpath...)
 		resolution.overrides = append(resolution.overrides, overrides...)
-		resources, resourcePaths, err := expandPackageResources(pkg, pkg.manifest.Sencha.Resources, toolkit)
+		resources, resourcePaths, err := expandPackageResources(pkg, pkg.manifest.Sencha.Resources, toolkit, locale)
 		if err != nil {
 			return packageResolution{}, err
 		}
@@ -177,7 +177,7 @@ func resolveAppPackages(appRoot string, required []string, toolkit string) (pack
 	return resolution, nil
 }
 
-func expandPackageResources(pkg *sdkPackage, entries resourceList, toolkit string) ([]resolvedResource, []string, error) {
+func expandPackageResources(pkg *sdkPackage, entries resourceList, toolkit, locale string) ([]resolvedResource, []string, error) {
 	var resources []resolvedResource
 	var watchPaths []string
 	for _, entry := range entries {
@@ -186,6 +186,10 @@ func expandPackageResources(pkg *sdkPackage, entries resourceList, toolkit strin
 		}
 		path := strings.ReplaceAll(entry.Path, "${package.dir}", pkg.root)
 		path = strings.ReplaceAll(path, "${package.name}", pkg.manifest.Sencha.Name)
+		path, err := expandPackageLocale(path, pkg.manifest.Sencha.Name, locale)
+		if err != nil {
+			return nil, nil, err
+		}
 		if strings.Contains(path, "${toolkit.name}") {
 			if toolkit == "" {
 				return nil, nil, fmt.Errorf("package %q resource path %q requires a toolkit", pkg.manifest.Sencha.Name, entry.Path)
@@ -195,7 +199,7 @@ func expandPackageResources(pkg *sdkPackage, entries resourceList, toolkit strin
 		if !filepath.IsAbs(path) {
 			path = filepath.Join(pkg.root, path)
 		}
-		path, err := filepath.Abs(path)
+		path, err = filepath.Abs(path)
 		if err != nil {
 			return nil, nil, fmt.Errorf("resolve package resource path: %w", err)
 		}
@@ -277,11 +281,15 @@ func indexSDKPackages(sdkRoot, toolkit string) (map[string]*sdkPackage, error) {
 	return packages, nil
 }
 
-func expandPackagePaths(pkg *sdkPackage, paths []string, toolkit string) ([]classSourcePath, error) {
+func expandPackagePaths(pkg *sdkPackage, paths []string, toolkit, locale string) ([]classSourcePath, error) {
 	var expanded []classSourcePath
 	for _, path := range paths {
 		path = strings.ReplaceAll(path, "${package.dir}", pkg.root)
 		path = strings.ReplaceAll(path, "${package.name}", pkg.manifest.Sencha.Name)
+		path, err := expandPackageLocale(path, pkg.manifest.Sencha.Name, locale)
+		if err != nil {
+			return nil, err
+		}
 		if strings.Contains(path, "${toolkit.name}") {
 			if toolkit == "" {
 				return nil, fmt.Errorf("package %q path %q requires a toolkit", pkg.manifest.Sencha.Name, path)
@@ -291,13 +299,23 @@ func expandPackagePaths(pkg *sdkPackage, paths []string, toolkit string) ([]clas
 		if !filepath.IsAbs(path) {
 			path = filepath.Join(pkg.root, path)
 		}
-		path, err := filepath.Abs(path)
+		path, err = filepath.Abs(path)
 		if err != nil {
 			return nil, fmt.Errorf("resolve package path: %w", err)
 		}
 		expanded = append(expanded, classSourcePath{path: path, base: filepath.Dir(filepath.Dir(pkg.root)), prefix: "sdk/", optional: true})
 	}
 	return expanded, nil
+}
+
+func expandPackageLocale(path, packageName, locale string) (string, error) {
+	if strings.Contains(path, "${package.locale}") {
+		if locale == "" {
+			return "", fmt.Errorf("package %q path %q requires app.json locale", packageName, path)
+		}
+		path = strings.ReplaceAll(path, "${package.locale}", locale)
+	}
+	return path, nil
 }
 
 func frameworkRuntimePath(config appConfig, sdkRoot, toolkit string) (string, error) {
