@@ -205,6 +205,19 @@ func BuildWithTargetOptions(appDir, outputDir, selectedToolkit, selectedPlatform
 	if err != nil {
 		return BuildResult{}, err
 	}
+	fashionColorPackages, err := packageSassVarRootsWithFashionColorFunctions(packageSassVarRoots)
+	if err != nil {
+		return BuildResult{}, err
+	}
+	var supportedThemeEtcSources []string
+	for _, source := range packageThemeSassEtcSources {
+		if fashionColorPackages[packageSassEtcRootPath(source)] {
+			packageSassEtcWarnings = append(packageSassEtcWarnings, fmt.Sprintf("skipped theme Sass etc source %s: its Fashion functions depend on unsupported material-color variables", source))
+			continue
+		}
+		supportedThemeEtcSources = append(supportedThemeEtcSources, source)
+	}
+	packageThemeSassEtcSources = supportedThemeEtcSources
 	appVarVariables, err := collectSassVariableNames(appSassVar)
 	if err != nil {
 		return BuildResult{}, err
@@ -398,7 +411,11 @@ func BuildWithTargetOptions(appDir, outputDir, selectedToolkit, selectedPlatform
 	if err != nil {
 		return BuildResult{}, err
 	}
-	classSassCSS, classSassWarnings, err := compileClassSass(root, sassSources, minify)
+	inlineSassImports := make(map[string]bool, len(packageThemeSassEtcSources))
+	for _, source := range packageThemeSassEtcSources {
+		inlineSassImports[source] = true
+	}
+	classSassCSS, classSassWarnings, err := compileClassSassWithInlineImports(root, sassSources, minify, inlineSassImports, packageSassVariables)
 	if err != nil {
 		return BuildResult{}, err
 	}

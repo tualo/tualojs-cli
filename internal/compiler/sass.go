@@ -19,6 +19,7 @@ var sassVariableDeclaration = regexp.MustCompile(`(?m)^[\t ]*\$([a-zA-Z_][a-zA-Z
 var sassVariableReference = regexp.MustCompile(`\$([a-zA-Z_][a-zA-Z0-9_-]*)`)
 var sassMixinDefinition = regexp.MustCompile(`(?m)^[\t ]*@mixin[\t ]+([a-zA-Z_-][a-zA-Z0-9_-]*)`)
 var sassMixinInclude = regexp.MustCompile(`@include[\t ]+([a-zA-Z_-][a-zA-Z0-9_-]*)`)
+var fashionMaterialColorFunction = regexp.MustCompile(`\bmaterial-(?:color|foreground-color)[\t ]*\(`)
 var fashionDynamicAssignment = regexp.MustCompile(`^[\t ]*\$[a-zA-Z_][a-zA-Z0-9_-]*[\t ]*:[\t ]*dynamic\(`)
 var fashionDynamicSuffix = regexp.MustCompile(`^[\t ]*(?:!default[\t ]*)?;?[\t ]*(?://.*)?$`)
 
@@ -190,16 +191,6 @@ func resolvePackageSassEtcSources(appRoot string, roots []packageSassEtcRoot, ig
 		seen[absolute] = true
 		watchPaths = append(watchPaths, absolute)
 		if theme {
-			data, err := os.ReadFile(absolute)
-			if err != nil {
-				return fmt.Errorf("read package theme Sass etc source %s: %w", absolute, err)
-			}
-			if len(sassImportDirective.FindAllSubmatch(data, -1)) > 0 {
-				warnings = append(warnings, fmt.Sprintf("skipped theme Sass etc source %s: imported Fashion context is not available", absolute))
-				return nil
-			}
-		}
-		if theme {
 			themeSources = append(themeSources, absolute)
 		} else {
 			sources = append(sources, absolute)
@@ -243,6 +234,59 @@ func resolvePackageSassEtcSources(appRoot string, roots []packageSassEtcRoot, ig
 		}
 	}
 	return uniquePaths(sources), uniquePaths(themeSources), uniquePaths(watchPaths), warnings, nil
+}
+
+func packageSassVarRootsWithFashionColorFunctions(roots []string) (map[string]bool, error) {
+	packages := make(map[string]bool)
+	for _, root := range roots {
+		info, err := os.Stat(root)
+		if err != nil {
+			if os.IsNotExist(err) {
+				continue
+			}
+			return nil, fmt.Errorf("stat package Sass var path %s: %w", root, err)
+		}
+		files := []string{root}
+		if info.IsDir() {
+			files = nil
+			err = filepath.WalkDir(root, func(path string, entry fs.DirEntry, walkErr error) error {
+				if walkErr != nil {
+					return walkErr
+				}
+				if !entry.IsDir() && strings.EqualFold(filepath.Ext(path), ".scss") {
+					files = append(files, path)
+				}
+				return nil
+			})
+			if err != nil {
+				return nil, fmt.Errorf("scan package Sass var path %s: %w", root, err)
+			}
+		}
+		for _, file := range files {
+			data, err := os.ReadFile(file)
+			if err != nil {
+				return nil, fmt.Errorf("read package Sass var source %s: %w", file, err)
+			}
+			if fashionMaterialColorFunction.Match(data) {
+				packageRoot := filepath.Clean(root)
+				if !info.IsDir() {
+					packageRoot = filepath.Dir(packageRoot)
+				}
+				packageRoot = filepath.Dir(filepath.Dir(packageRoot))
+				packages[packageRoot] = true
+				break
+			}
+		}
+	}
+	return packages, nil
+}
+
+func packageSassEtcRootPath(source string) string {
+	root := filepath.Clean(source)
+	if strings.EqualFold(filepath.Ext(root), ".scss") {
+		root = filepath.Dir(root)
+	}
+	return filepath.Dir(filepath.Dir(root))
 }
 
 func resolvePackageSassVariables(appRoot string, roots []string, initialVariables map[string]bool, ignore []*regexp.Regexp) ([]string, []string, map[string]bool, []string, error) {
@@ -374,10 +418,13 @@ func unsupportedPackageSassVariableSource(source []byte, definitions, available 
 	if reason := unsupportedFashionSource(source); reason != "" {
 		return reason
 	}
+	if fashionMaterialColorFunction.Match(source) {
+		return "Fashion material color functions require Sencha Fashion evaluation"
+	}
 	if len(sassMixinInclude.FindAllSubmatch(source, -1)) > 0 {
 		return "Package Sass var mixin includes are not supported"
 	}
-	for _, marker := range []string{"@import", "@use", "@forward", "url(", "#{"} {
+	for _, marker := range []string{"@import", "@use", "@forward", "url("} {
 		if bytes.Contains(source, []byte(marker)) {
 			return "package Sass var uses imports, interpolation or resource URLs not covered by this step"
 		}
@@ -626,68 +673,192 @@ func inspectSassImportTree(appRoot, source string, visited map[string]bool) (boo
 	return false, uniquePaths(imports), nil
 }
 
-func inlineSassImports(appRoot, importer string, source []byte) ([]byte, []string, error) {
-	text := string(source)
-	matches := sassImportDirective.FindAllStringIndex(text, -1)
-	if len(matches) == 0 {
-		return source, nil, nil
-	}
-	var output strings.Builder
+func inlineSassImports(appRoot, importer string, source []byte, availableVariables map[string]bool) ([]byte, []string, error) {
 	var warnings []string
-	previous := 0
-	for _, match := range matches {
-		output.WriteString(text[previous:match[0]])
-		directive := text[match[0]:match[1]]
-		dropDirective := false
-		if !strings.Contains(directive, "url(") {
-			rewriteErr := error(nil)
-			directive = sassImportPath.ReplaceAllStringFunc(directive, func(literal string) string {
-				if len(literal) < 2 {
-					return literal
-				}
+	active := make(map[string]bool)
+	var expand func(string, []byte) ([]byte, error)
+	expand = func(current string, data []byte) ([]byte, error) {
+		text := string(data)
+		matches := sassImportDirective.FindAllStringSubmatchIndex(text, -1)
+		if len(matches) == 0 {
+			return data, nil
+		}
+		var output strings.Builder
+		previous := 0
+		braceDepth := 0
+		for _, match := range matches {
+			prefix := text[previous:match[0]]
+			output.WriteString(prefix)
+			braceDepth += strings.Count(prefix, "{") - strings.Count(prefix, "}")
+			if braceDepth > 0 {
+				warnings = append(warnings, fmt.Sprintf("skipped Sass import nested in a block in %s", current))
+				previous = match[1]
+				continue
+			}
+			directive := text[match[0]:match[1]]
+			kind := text[match[2]:match[3]]
+			value := text[match[4]:match[5]]
+			if strings.Contains(value, "url(") {
+				output.WriteString(directive)
+				previous = match[1]
+				continue
+			}
+			paths := sassImportPath.FindAllStringSubmatchIndex(value, -1)
+			if len(paths) == 0 {
+				output.WriteString(directive)
+				previous = match[1]
+				continue
+			}
+			var replacement strings.Builder
+			valuePrevious := 0
+			dropDirective := false
+			inlinedImport := false
+			for _, pathMatch := range paths {
+				replacement.WriteString(value[valuePrevious:pathMatch[0]])
+				literal := value[pathMatch[0]:pathMatch[1]]
+				path := strings.TrimSpace(value[pathMatch[2]:pathMatch[3]])
 				quote := literal[:1]
-				path := literal[1 : len(literal)-1]
 				if path == "" || strings.HasPrefix(path, "sass:") || strings.Contains(path, "://") || strings.HasSuffix(strings.ToLower(path), ".css") || filepath.IsAbs(filepath.FromSlash(path)) {
-					return literal
+					replacement.WriteString(literal)
+					valuePrevious = pathMatch[1]
+					continue
 				}
 				if strings.HasSuffix(strings.ToLower(path), ".js") {
+					warnings = append(warnings, fmt.Sprintf("skipped Fashion JavaScript import %q in Sass source %s", path, current))
 					dropDirective = true
-					warnings = append(warnings, fmt.Sprintf("skipped Fashion JavaScript import %q in Sass source %s", path, importer))
-					return literal
+					valuePrevious = pathMatch[1]
+					continue
 				}
-				resolved, exists, err := resolveSassImport(appRoot, importer, path)
+				resolved, exists, err := resolveSassImport(appRoot, current, path)
 				if err != nil {
-					rewriteErr = err
-					return literal
+					return nil, fmt.Errorf("resolve Sass import %q in %s: %w", path, current, err)
 				}
 				if !exists {
+					warnings = append(warnings, fmt.Sprintf("skipped unresolved Sass import %q in %s", path, current))
 					dropDirective = true
-					warnings = append(warnings, fmt.Sprintf("skipped unresolved Sass import %q in %s", path, importer))
-					return literal
+					valuePrevious = pathMatch[1]
+					continue
 				}
-				unsupported, _, err := inspectSassImportTree(appRoot, resolved, make(map[string]bool))
-				if err != nil {
-					rewriteErr = err
-					return literal
+				if kind == "import" {
+					if strings.Contains(strings.ToLower(filepath.Base(resolved)), "font-icons") {
+						if missingVariable := sassImportTreeUnresolvedVariable([]string{resolved}, availableVariables); missingVariable != "" {
+							warnings = append(warnings, fmt.Sprintf("skipped unsupported Sass import %q in %s: references unavailable Sass variable $%s", path, current, missingVariable))
+							dropDirective = true
+							valuePrevious = pathMatch[1]
+							continue
+						}
+					}
+					if active[resolved] {
+						replacement.WriteString(literal)
+						valuePrevious = pathMatch[1]
+						continue
+					}
+					imported, err := os.ReadFile(resolved)
+					if err != nil {
+						return nil, fmt.Errorf("read Sass import source %s: %w", resolved, err)
+					}
+					if sassSourceHasNestedMixin(imported) {
+						warnings = append(warnings, fmt.Sprintf("skipped Sass import %q in %s: nested Sass mixins are unsupported", path, current))
+						dropDirective = true
+						valuePrevious = pathMatch[1]
+						continue
+					}
+					active[resolved] = true
+					expanded, err := expand(resolved, imported)
+					delete(active, resolved)
+					if err != nil {
+						return nil, err
+					}
+					replacement.Write(expanded)
+					replacement.WriteByte('\n')
+					inlinedImport = true
+				} else {
+					unsupported, _, err := inspectSassImportTree(appRoot, resolved, make(map[string]bool))
+					if err != nil {
+						return nil, err
+					}
+					if unsupported {
+						warnings = append(warnings, fmt.Sprintf("skipped unsupported Sass import %q in %s", path, current))
+						dropDirective = true
+						valuePrevious = pathMatch[1]
+						continue
+					}
+					replacement.WriteString(quote + filepath.ToSlash(resolved) + quote)
 				}
-				if unsupported {
-					dropDirective = true
-					warnings = append(warnings, fmt.Sprintf("skipped unsupported Sass import %q in %s", path, importer))
-					return literal
+				valuePrevious = pathMatch[1]
+			}
+			if !dropDirective {
+				replacement.WriteString(value[valuePrevious:])
+				if kind == "import" && inlinedImport {
+					output.WriteString(replacement.String())
+				} else {
+					output.WriteString(text[match[0]:match[4]])
+					output.WriteString(replacement.String())
+					output.WriteString(text[match[5]:match[1]])
 				}
-				return quote + filepath.ToSlash(resolved) + quote
-			})
-			if rewriteErr != nil {
-				return nil, warnings, rewriteErr
+			}
+			previous = match[1]
+		}
+		output.WriteString(text[previous:])
+		return []byte(output.String()), nil
+	}
+	expanded, err := expand(importer, source)
+	if err != nil {
+		return nil, warnings, err
+	}
+	return expanded, warnings, nil
+}
+
+func sassImportTreeUnresolvedVariable(sources []string, availableVariables map[string]bool) string {
+	available := make(map[string]bool, len(availableVariables))
+	for name := range availableVariables {
+		available[name] = true
+	}
+	definitions := make(map[string]bool)
+	dataBySource := make(map[string][]byte, len(sources))
+	for _, source := range uniquePaths(sources) {
+		data, err := os.ReadFile(source)
+		if err != nil {
+			return "<unreadable>"
+		}
+		dataBySource[source] = data
+		for name := range sassVariableNames(data) {
+			definitions[name] = true
+		}
+	}
+	for _, source := range uniquePaths(sources) {
+		data := dataBySource[source]
+		depth := 0
+		for _, line := range strings.Split(string(data), "\n") {
+			if depth == 0 && sassVariableDeclaration.MatchString(line) {
+				for _, match := range sassVariableReference.FindAllSubmatch([]byte(line), -1) {
+					name := string(match[1])
+					if !definitions[name] && !available[name] {
+						return name
+					}
+				}
+			}
+			depth += strings.Count(line, "{") - strings.Count(line, "}")
+			if depth < 0 {
+				depth = 0
 			}
 		}
-		if !dropDirective {
-			output.WriteString(directive)
-		}
-		previous = match[1]
 	}
-	output.WriteString(text[previous:])
-	return []byte(output.String()), warnings, nil
+	return ""
+}
+
+func sassSourceHasNestedMixin(source []byte) bool {
+	depth := 0
+	for _, line := range strings.Split(string(source), "\n") {
+		if depth > 0 && sassMixinDefinition.MatchString(line) {
+			return true
+		}
+		depth += strings.Count(line, "{") - strings.Count(line, "}")
+		if depth < 0 {
+			depth = 0
+		}
+	}
+	return false
 }
 
 func resolveSassImport(appRoot, importer, importPath string) (string, bool, error) {
@@ -742,6 +913,10 @@ func sassImportCandidates(path string) []string {
 }
 
 func compileClassSass(appRoot string, sources []string, minify bool) ([]byte, []string, error) {
+	return compileClassSassWithInlineImports(appRoot, sources, minify, nil, nil)
+}
+
+func compileClassSassWithInlineImports(appRoot string, sources []string, minify bool, inlineImports map[string]bool, availableVariables map[string]bool) ([]byte, []string, error) {
 	if len(sources) == 0 {
 		return nil, nil, nil
 	}
@@ -756,10 +931,15 @@ func compileClassSass(appRoot string, sources []string, minify bool) ([]byte, []
 	var entry strings.Builder
 	var warnings []string
 	imported := 0
+	entry.WriteString("@function dynamic($value, $args...) { @return $value; }\n")
 	for _, source := range sources {
 		data, err := os.ReadFile(source)
 		if err != nil {
 			return nil, warnings, fmt.Errorf("read Sass source %s: %w", source, err)
+		}
+		if sassSourceHasNestedMixin(data) {
+			warnings = append(warnings, fmt.Sprintf("skipped Fashion-dependent Sass source %s: nested Sass mixins are unsupported", source))
+			continue
 		}
 		normalized, dynamicChanged, reason := normalizeFashionDynamic(data)
 		if reason != "" {
@@ -770,9 +950,9 @@ func compileClassSass(appRoot string, sources []string, minify bool) ([]byte, []
 			warnings = append(warnings, fmt.Sprintf("skipped Fashion-dependent Sass source %s: %s", source, reason))
 			continue
 		}
-		if dynamicChanged {
+		if dynamicChanged || inlineImports[source] {
 			var importWarnings []string
-			normalized, importWarnings, err = inlineSassImports(appRoot, source, normalized)
+			normalized, importWarnings, err = inlineSassImports(appRoot, source, normalized, availableVariables)
 			if err != nil {
 				return nil, warnings, fmt.Errorf("normalize Sass imports in %s: %w", source, err)
 			}
@@ -896,6 +1076,9 @@ func normalizeFashionDynamic(source []byte) ([]byte, bool, string) {
 func unsupportedFashionSource(source []byte) string {
 	if _, _, reason := normalizeFashionDynamic(source); reason != "" {
 		return reason
+	}
+	if bytes.Contains(source, []byte("theme-background-image(")) {
+		return "theme-background-image requires Sencha Fashion resource context"
 	}
 	return ""
 }

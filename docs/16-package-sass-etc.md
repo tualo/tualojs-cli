@@ -7,9 +7,9 @@ Ext-SDK-Packages wie `core` deklarieren in `sencha.sass.etc` einen Einstieg mit 
 ## Verhalten
 
 - `sencha.sass.etc` geladener Packages wird als SCSS-Einstieg aufgelöst; Package-Pfade müssen innerhalb des Package-Verzeichnisses liegen.
-- `etc`-Einstiege aus Nicht-Theme-Packages laufen nach App-`sass.etc` und vor Package-`sass.var`; einfache Theme-`etc`-Einstiege laufen nach Package-`sass.var` und vor App-`sass.var`.
+- `etc`-Einstiege aus Nicht-Theme-Packages laufen nach App-`sass.etc` und vor Package-`sass.var`; Theme-`etc`-Einstiege laufen nach Package-`sass.var` und vor App-`sass.var`.
 - Lokale `@import`-/`@use`-/`@forward`-Partials werden beim Watchen berücksichtigt. Beim Kompilieren werden relative Imports auf ihre Quelldateien aufgelöst.
-- Theme-`etc`-Einstiege mit Imports in den Fashion-Kontext werden mit Warnung ausgelassen. Unaufgelöste Imports und Fashion-JavaScript-Imports werden ebenfalls ausgelassen und gewarnt.
+- Fashion-JavaScript-Imports und unaufgelöste Imports werden mit Warnung ausgelassen; die übrigen Theme-Imports werden verarbeitet.
 - Direkte Variablendeklarationen aus Package-`etc` stehen der Package-Variablenauflösung und Class-SCSS-Prüfung zur Verfügung.
 - Verarbeitete Package-`etc`-Einstiege und ihre unterstützten lokalen Imports bleiben Watch-Pfade.
 
@@ -21,4 +21,4 @@ Ext-SDK-Packages wie `core` deklarieren in `sencha.sass.etc` einen Einstieg mit 
 
 ## Grenzen
 
-Das Laden der Package-`etc`-Einstiege stellt noch keinen vollständigen Sencha-Fashion-Kontext her. Fashion-spezifische `@include`-Aufrufe, Theme-`etc`-Imports, Fashion-JavaScript-Funktionen und dynamisch berechnete Variablen bleiben begrenzt.
+Das Laden der Package-`etc`-Einstiege stellt noch keinen vollständigen Sencha-Fashion-Kontext her. Fashion-JavaScript-Funktionen und dynamische Theme-Auswertung bleiben begrenzt.

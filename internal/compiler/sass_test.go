@@ -118,6 +118,31 @@ $spacing: dynamic(1px + 2px);`,
 	}
 }
 
+func TestDartSassResolvesDynamicAssignmentsInImportedPartial(t *testing.T) {
+	binary := os.Getenv("SASS")
+	if binary == "" {
+		binary = "sass"
+	}
+	if _, err := exec.LookPath(binary); err != nil {
+		t.Skip("Dart Sass is not installed")
+	}
+
+	root := makeFixture(t, map[string]string{
+		"app/_theme.scss": `$theme-color: dynamic(#abc);`,
+		"app/Main.scss":   `@import "theme"; .main { color: $theme-color; }`,
+	})
+	css, warnings, err := compileClassSass(root, []string{filepath.Join(root, "app", "Main.scss")}, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(warnings) != 0 {
+		t.Fatalf("Sass warnings = %#v", warnings)
+	}
+	if !strings.Contains(string(css), "color: #abc") {
+		t.Fatalf("compiled CSS = %s, want imported dynamic variable resolved", css)
+	}
+}
+
 func TestBuildLoadsPackageSassEtcAndLocalImports(t *testing.T) {
 	binary := os.Getenv("SASS")
 	if binary == "" {
@@ -128,16 +153,19 @@ func TestBuildLoadsPackageSassEtcAndLocalImports(t *testing.T) {
 	}
 
 	root := makeFixture(t, map[string]string{
-		"app.json":                                     `{"name":"Example","namespace":"Example","toolkit":"classic","requires":["widget-lib"],"classpath":["app"],"js":[{"path":"app.js","bundle":true}]}`,
-		"workspace.json":                               `{"frameworks":{"ext":{"path":"sdk","version":"8.0.0.43"}}}`,
-		"sdk/package.json":                             `{"name":"ext","version":"8.0.0.43","compatVersion":"8.0.0"}`,
-		"sdk/packages/core/package.json":               `{"version":"8.0.0.43","sencha":{"name":"core","classpath":"${package.dir}/src","sass":{"etc":"${package.dir}/sass/etc/all.scss"}}}`,
-		"sdk/packages/widget-lib/package.json":         `{"version":"1.0.0","sencha":{"name":"widget-lib","requires":["core"],"classpath":"${package.dir}/src","sass":{"src":"${package.dir}/sass/src"}}}`,
-		"sdk/classic/classic/package.json":             `{"version":"8.0.0.43","sencha":{"name":"classic","requires":["core"],"classpath":"${package.dir}/src"}}`,
-		"sdk/packages/core/sass/etc/all.scss":          "$prefix: dynamic('x-');\n@import \"mixins\";\n",
-		"sdk/packages/core/sass/etc/_mixins.scss":      `@mixin unused-package-mixin { color: red; }`,
-		"sdk/packages/widget-lib/src/Widget.js":        `Ext.define('Lib.Widget', {});`,
-		"sdk/packages/widget-lib/sass/src/Widget.scss": `.#{$prefix}widget { @include unused-package-mixin; color: #246; }`,
+		"app.json":                                       `{"name":"Example","namespace":"Example","toolkit":"classic","theme":"theme-custom","requires":["widget-lib"],"classpath":["app"],"js":[{"path":"app.js","bundle":true}]}`,
+		"workspace.json":                                 `{"frameworks":{"ext":{"path":"sdk","version":"8.0.0.43"}}}`,
+		"sdk/package.json":                               `{"name":"ext","version":"8.0.0.43","compatVersion":"8.0.0"}`,
+		"sdk/packages/core/package.json":                 `{"version":"8.0.0.43","sencha":{"name":"core","classpath":"${package.dir}/src","sass":{"etc":"${package.dir}/sass/etc/all.scss"}}}`,
+		"sdk/packages/widget-lib/package.json":           `{"version":"1.0.0","sencha":{"name":"widget-lib","requires":["core"],"classpath":"${package.dir}/src","sass":{"src":"${package.dir}/sass/src"}}}`,
+		"sdk/packages/theme-custom/package.json":         `{"version":"1.0.0","sencha":{"name":"theme-custom","type":"theme","extend":"core","classpath":"${package.dir}/src","sass":{"etc":"${package.dir}/sass/etc/all.scss"}}}`,
+		"sdk/classic/classic/package.json":               `{"version":"8.0.0.43","sencha":{"name":"classic","requires":["core"],"classpath":"${package.dir}/src"}}`,
+		"sdk/packages/core/sass/etc/all.scss":            "$prefix: dynamic('x-');\n@import \"mixins\";\n",
+		"sdk/packages/core/sass/etc/_mixins.scss":        `@mixin unused-package-mixin { color: red; }`,
+		"sdk/packages/theme-custom/sass/etc/all.scss":    "$theme-color: #abc;\n@import \"theme\";\n",
+		"sdk/packages/theme-custom/sass/etc/_theme.scss": `@mixin theme-package-mixin { border-color: $theme-color; }`,
+		"sdk/packages/widget-lib/src/Widget.js":          `Ext.define('Lib.Widget', {});`,
+		"sdk/packages/widget-lib/sass/src/Widget.scss":   `.#{$prefix}widget { @include unused-package-mixin; @include theme-package-mixin; color: #246; }`,
 		"app.js":       `Ext.application({name: 'Example'}); Ext.require('Lib.Widget');`,
 		"app/Empty.js": "",
 	})
@@ -153,12 +181,14 @@ func TestBuildLoadsPackageSassEtcAndLocalImports(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(string(css), ".x-widget") || !strings.Contains(string(css), "color: red") || !strings.Contains(string(css), "color: #246") {
+	if !strings.Contains(string(css), ".x-widget") || !strings.Contains(string(css), "color: red") || !strings.Contains(string(css), "border-color: #abc") || !strings.Contains(string(css), "color: #246") {
 		t.Fatalf("compiled package Sass = %s", css)
 	}
 	for _, path := range []string{
 		filepath.Join(root, "sdk", "packages", "core", "sass", "etc", "all.scss"),
 		filepath.Join(root, "sdk", "packages", "core", "sass", "etc", "_mixins.scss"),
+		filepath.Join(root, "sdk", "packages", "theme-custom", "sass", "etc", "all.scss"),
+		filepath.Join(root, "sdk", "packages", "theme-custom", "sass", "etc", "_theme.scss"),
 	} {
 		found := false
 		for _, watchPath := range result.WatchPaths {
