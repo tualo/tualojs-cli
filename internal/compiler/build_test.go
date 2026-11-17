@@ -549,14 +549,18 @@ func TestBuildCopiesConfiguredResources(t *testing.T) {
 
 func TestBuildCompilesSCSSPairedWithClasspathJavaScript(t *testing.T) {
 	root := makeFixture(t, map[string]string{
-		"app.json":         `{"name":"Example","namespace":"Example","toolkit":"classic","classpath":["app"],"css":[{"path":"styles/base.css"}],"js":[{"path":"app.js","bundle":true}]}`,
-		"app.js":           `Ext.application({name: 'Example'});`,
-		"app/Fashion.js":   `Ext.define('Example.Fashion', {});`,
-		"app/Fashion.scss": `@include extjs-button-small-ui($ui: 'sample');`,
-		"app/Main.js":      `Ext.define('Example.Main', {});`,
-		"app/Main.scss":    `.main { border: 0px; }`,
-		"app/Orphan.scss":  `.orphan { display: none; }`,
-		"styles/base.css":  "body { color: black; }",
+		"app.json":                      `{"name":"Example","namespace":"Example","toolkit":"classic","classpath":["app"],"sass":{"etc":"sass/etc/all.scss","var":"sass/var","src":["sass/src","${toolkit.name}/sass/src"]},"css":[{"path":"styles/base.css"}],"js":[{"path":"app.js","bundle":true}]}`,
+		"app.js":                        `Ext.application({name: 'Example'});`,
+		"app/Fashion.js":                `Ext.define('Example.Fashion', {});`,
+		"app/Fashion.scss":              `@include extjs-button-small-ui($ui: 'sample');`,
+		"app/Main.js":                   `Ext.define('Example.Main', {});`,
+		"app/Main.scss":                 `.main { border: 0px; }`,
+		"app/Orphan.scss":               `.orphan { display: none; }`,
+		"sass/etc/all.scss":             "$base-color: #246;",
+		"sass/var/colors.scss":          "$main-color: $base-color;",
+		"sass/src/base.scss":            `.configured { color: $main-color; }`,
+		"classic/sass/src/toolkit.scss": `.toolkit { color: $main-color; }`,
+		"styles/base.css":               "body { color: black; }",
 	})
 
 	sassBinary := filepath.Join(t.TempDir(), "sass")
@@ -567,13 +571,13 @@ if [ "$1" != "--no-source-map" ] || [ "$2" != "--style=compressed" ] || [ "$3" !
 fi
 input=$(cat)
 case "$input" in
-    *'@import "app/Main.scss";'*) ;;
-    *) echo "Sass entry is missing Main.scss: $input" >&2; exit 3 ;;
+    *'@import "sass/etc/all.scss";'*'@import "sass/var/colors.scss";'*'@import "sass/src/base.scss";'*'@import "classic/sass/src/toolkit.scss";'*'@import "app/Main.scss";'*) ;;
+    *) echo "Sass entry has unexpected sources or ordering: $input" >&2; exit 3 ;;
 esac
 case "$input" in
     *Fashion.scss*) echo "Sass entry should omit Fashion.scss: $input" >&2; exit 4 ;;
 esac
-printf '.main{border:0px}\n'
+printf '.configured{color:#246}.toolkit{color:#246}.main{border:0px}\n'
 `
 	if err := os.WriteFile(sassBinary, []byte(sassScript), 0o755); err != nil {
 		t.Fatal(err)
@@ -597,7 +601,7 @@ printf '.main{border:0px}\n'
 	if err != nil {
 		t.Fatal(err)
 	}
-	if string(compiled) != ".main{border:0px}\n" {
+	if string(compiled) != ".configured{color:#246}.toolkit{color:#246}.main{border:0px}\n" {
 		t.Fatalf("generated Sass CSS = %q", compiled)
 	}
 	if len(result.Warnings) != 1 || !strings.Contains(result.Warnings[0], "Fashion-dependent Sass source") || !strings.Contains(result.Warnings[0], "Fashion.scss") {

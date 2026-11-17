@@ -66,6 +66,66 @@ func resolveClassSassSources(appRoot string, sourceRoots []string, ignore []*reg
 	return uniquePaths(sources), nil
 }
 
+func resolveConfiguredSassSources(appRoot, appName, toolkit string, config sassConfig, ignore []*regexp.Regexp) ([]string, error) {
+	var sources []string
+	for _, paths := range [][]string{config.Etc, config.Var, config.Src} {
+		expanded, err := expandAppPaths(paths, appRoot, appName, toolkit)
+		if err != nil {
+			return nil, err
+		}
+		for _, configuredPath := range expanded {
+			path, err := projectPath(appRoot, configuredPath)
+			if err != nil {
+				return nil, fmt.Errorf("configured Sass path: %w", err)
+			}
+			if isIgnoredProjectPath(appRoot, path, ignore) {
+				continue
+			}
+			info, err := os.Stat(path)
+			if err != nil {
+				if os.IsNotExist(err) {
+					continue
+				}
+				return nil, fmt.Errorf("stat configured Sass path %s: %w", path, err)
+			}
+			if !info.IsDir() {
+				if strings.EqualFold(filepath.Ext(path), ".scss") {
+					absolute, err := filepath.Abs(path)
+					if err != nil {
+						return nil, err
+					}
+					sources = append(sources, absolute)
+				}
+				continue
+			}
+			err = filepath.WalkDir(path, func(source string, entry fs.DirEntry, walkErr error) error {
+				if walkErr != nil {
+					return walkErr
+				}
+				if entry.IsDir() {
+					if source != path && isIgnoredProjectPath(appRoot, source, ignore) {
+						return filepath.SkipDir
+					}
+					return nil
+				}
+				if strings.HasPrefix(entry.Name(), "_") || !strings.EqualFold(filepath.Ext(source), ".scss") || isIgnoredProjectPath(appRoot, source, ignore) {
+					return nil
+				}
+				absolute, err := filepath.Abs(source)
+				if err != nil {
+					return err
+				}
+				sources = append(sources, absolute)
+				return nil
+			})
+			if err != nil {
+				return nil, fmt.Errorf("scan configured Sass path %s: %w", path, err)
+			}
+		}
+	}
+	return uniquePaths(sources), nil
+}
+
 func compileClassSass(appRoot string, sources []string, minify bool) ([]byte, []string, error) {
 	if len(sources) == 0 {
 		return nil, nil, nil

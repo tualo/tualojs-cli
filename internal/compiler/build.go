@@ -143,13 +143,18 @@ func BuildWithTargetOptions(appDir, outputDir, selectedToolkit, selectedPlatform
 	if err != nil {
 		return BuildResult{}, err
 	}
+	configuredSassSources, err := resolveConfiguredSassSources(root, config.Name, toolkit, config.Sass, ignorePatterns)
+	if err != nil {
+		return BuildResult{}, err
+	}
 	sassRoots := append(append([]string{}, config.Classpath...), config.Overrides...)
 	classSassSources, err := resolveClassSassSources(root, sassRoots, ignorePatterns)
 	if err != nil {
 		return BuildResult{}, err
 	}
-	if len(classSassSources) > 0 && toolkit == "" {
-		return BuildResult{}, fmt.Errorf("class Sass compilation requires a selected toolkit; pass -toolkit classic or -toolkit modern")
+	sassSources := uniquePaths(append(configuredSassSources, classSassSources...))
+	if len(sassSources) > 0 && toolkit == "" {
+		return BuildResult{}, fmt.Errorf("Sass compilation requires a selected toolkit; pass -toolkit classic or -toolkit modern")
 	}
 	if toolkit == "" && len(config.Requires) > 0 {
 		return BuildResult{}, fmt.Errorf("app package resolution requires a toolkit; pass -toolkit classic or -toolkit modern")
@@ -251,7 +256,7 @@ func BuildWithTargetOptions(appDir, outputDir, selectedToolkit, selectedPlatform
 	watchPaths = append(watchPaths, resourceWatchPaths...)
 	watchPaths = append(watchPaths, styleWatchPaths...)
 	watchPaths = append(watchPaths, scriptWatchPaths...)
-	watchPaths = append(watchPaths, classSassSources...)
+	watchPaths = append(watchPaths, sassSources...)
 	watchPaths = append(watchPaths, filepath.Join(root, "app.json"), filepath.Join(root, "workspace.json"), entryPath)
 	for _, sourcePath := range paths {
 		if sourcePath.framework {
@@ -331,7 +336,7 @@ func BuildWithTargetOptions(appDir, outputDir, selectedToolkit, selectedPlatform
 	if err != nil {
 		return BuildResult{}, err
 	}
-	classSassCSS, classSassWarnings, err := compileClassSass(root, classSassSources, minify)
+	classSassCSS, classSassWarnings, err := compileClassSass(root, sassSources, minify)
 	if err != nil {
 		return BuildResult{}, err
 	}

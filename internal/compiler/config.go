@@ -25,6 +25,13 @@ type appConfig struct {
 	JavaScript []jsEntry               `json:"js"`
 	CSS        resourceList            `json:"css"`
 	Resources  resourceList            `json:"resources"`
+	Sass       sassConfig              `json:"sass"`
+}
+
+type sassConfig struct {
+	Etc pathList `json:"etc"`
+	Var pathList `json:"var"`
+	Src pathList `json:"src"`
 }
 
 type buildProfile struct {
