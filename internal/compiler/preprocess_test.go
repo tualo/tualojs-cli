@@ -117,6 +117,36 @@ after();
 	}
 }
 
+func TestPreprocessFeatureMarkers(t *testing.T) {
+	source := `before();
+//<feature legacyBrowser>
+legacyBrowserOnly();
+//</feature>
+//<feature classSystem.statics>
+classSystemFeature();
+//</feature>
+//<feature logger>
+loggerFeature();
+//</feature>
+after();
+`
+	got, err := preprocessSencha(source, BuildModeProduction, "classic")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(got, "legacyBrowserOnly") {
+		t.Fatalf("modern browser build retained legacy-browser feature code: %s", got)
+	}
+	for _, expected := range []string{"before();", "classSystemFeature();", "loggerFeature();", "after();"} {
+		if !strings.Contains(got, expected) {
+			t.Errorf("feature preprocessing lost enabled content %q: %s", expected, got)
+		}
+	}
+	if strings.Contains(got, "<feature") || strings.Contains(got, "</feature>") {
+		t.Fatalf("feature preprocessing retained marker comments: %s", got)
+	}
+}
+
 func TestPreprocessRejectsUnsupportedOrUnresolvedToolkitConditions(t *testing.T) {
 	for _, test := range []struct {
 		source, toolkit string
@@ -125,6 +155,8 @@ func TestPreprocessRejectsUnsupportedOrUnresolvedToolkitConditions(t *testing.T)
 		{source: "// <if classic>\nclassic();\n// </if>\n", toolkit: ""},
 		{source: "// </if>\n", toolkit: "classic"},
 		{source: "// <if classic>\nclassic();\n", toolkit: "classic"},
+		{source: "//<feature desktop>\ndesktopOnly();\n//</feature>\n", toolkit: "classic"},
+		{source: "//<feature legacyBrowser>\nlegacyOnly();\n", toolkit: "classic"},
 	} {
 		if _, err := preprocessSencha(test.source, BuildModeProduction, test.toolkit); err == nil {
 			t.Errorf("preprocessSencha(%q, %q) succeeded, want conditional marker error", test.source, test.toolkit)

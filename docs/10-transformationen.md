@@ -20,6 +20,12 @@
 - `classic` und `modern` brauchen ein explizit ausgewähltes Toolkit. Unbekannte Bedingungen, nicht passende `</if condition>`-Marker und unausgeglichene Blöcke sind Fehler.
 - Toolkit-Bedingungen können mit `<debug>`-Blöcken verschachtelt werden.
 
+## Feature-Blöcke
+
+- `//<feature legacyBrowser>` wird für den Standard-Browser-Build ausgeschlossen.
+- `//<feature logger>` und `//<feature classSystem.*>` werden eingeschlossen; ihre Marker werden entfernt.
+- Unbekannte Feature-Namen sowie nicht geschlossene `<feature>`-Blöcke sind Fehler.
+
 ## Prüfungen
 
 - Unit- und Integrationstests prüfen verschachtelte Blöcke, debug-only Klassenabhängigkeiten und fehlerhafte Marker.
@@ -27,4 +33,4 @@
 
 ## Grenzen
 
-Plattformbedingungen wie `desktop`/`phone`, weitere Sencha-Bedingungen wie `<feature>`, negierte und zusammengesetzte Ausdrücke, weitere Präprozessoren und Compiler-Makros sind noch nicht umgesetzt.
+Plattformbedingungen wie `desktop`/`phone`, weitere Feature-Namen, negierte und zusammengesetzte Ausdrücke, weitere Präprozessoren und Compiler-Makros sind noch nicht umgesetzt.

@@ -10,6 +10,11 @@ type toolkitCondition struct {
 	active bool
 }
 
+type featureCondition struct {
+	name   string
+	active bool
+}
+
 func preprocessSencha(source, mode, toolkit string) (string, error) {
 	if mode != BuildModeDevelopment && mode != BuildModeProduction {
 		return "", fmt.Errorf("unsupported build mode %q", mode)
@@ -18,12 +23,15 @@ func preprocessSencha(source, mode, toolkit string) (string, error) {
 	var output strings.Builder
 	debugDepth := 0
 	var toolkitConditions []toolkitCondition
+	var featureConditions []featureCondition
 	for _, line := range lines {
 		lineContent := strings.TrimSuffix(strings.TrimSuffix(line, "\n"), "\r")
 		lineEnding := line[len(lineContent):]
 		toolkitMarker, condition := toolkitConditionMarker(lineContent)
 		toolkitActive := len(toolkitConditions) == 0 || toolkitConditions[len(toolkitConditions)-1].active
-		active := toolkitActive && (debugDepth == 0 || mode == BuildModeDevelopment)
+		featureMarker, feature := featureConditionMarker(lineContent)
+		featureActive := len(featureConditions) == 0 || featureConditions[len(featureConditions)-1].active
+		active := toolkitActive && featureActive && (debugDepth == 0 || mode == BuildModeDevelopment)
 
 		if toolkitMarker == "open" {
 			conditionActive, err := evaluateToolkitCondition(condition, toolkit)
@@ -46,6 +54,23 @@ func preprocessSencha(source, mode, toolkit string) (string, error) {
 			output.WriteString(lineEnding)
 			continue
 		}
+		if featureMarker == "open" {
+			featureEnabled, err := evaluateSenchaFeature(feature)
+			if err != nil {
+				return "", fmt.Errorf("Sencha feature %q: %w", feature, err)
+			}
+			featureConditions = append(featureConditions, featureCondition{name: feature, active: featureActive && featureEnabled})
+			output.WriteString(lineEnding)
+			continue
+		}
+		if featureMarker == "close" {
+			if len(featureConditions) == 0 {
+				return "", fmt.Errorf("unmatched Sencha feature close marker")
+			}
+			featureConditions = featureConditions[:len(featureConditions)-1]
+			output.WriteString(lineEnding)
+			continue
+		}
 
 		marker := debugMarker(lineContent)
 		switch marker {
@@ -58,7 +83,7 @@ func preprocessSencha(source, mode, toolkit string) (string, error) {
 			}
 		case "close":
 			if debugDepth == 0 {
-				if toolkitActive && mode == BuildModeDevelopment {
+				if toolkitActive && featureActive && mode == BuildModeDevelopment {
 					output.WriteString(line)
 				} else {
 					output.WriteString(lineEnding)
@@ -66,7 +91,7 @@ func preprocessSencha(source, mode, toolkit string) (string, error) {
 				continue
 			}
 			debugDepth--
-			if toolkitActive && mode == BuildModeDevelopment {
+			if toolkitActive && featureActive && mode == BuildModeDevelopment {
 				output.WriteString(line)
 			} else {
 				output.WriteString(lineEnding)
@@ -84,6 +109,9 @@ func preprocessSencha(source, mode, toolkit string) (string, error) {
 	}
 	if len(toolkitConditions) != 0 {
 		return "", fmt.Errorf("unterminated Sencha toolkit condition block %q", toolkitConditions[len(toolkitConditions)-1].name)
+	}
+	if len(featureConditions) != 0 {
+		return "", fmt.Errorf("unterminated Sencha feature block %q", featureConditions[len(featureConditions)-1].name)
 	}
 	return output.String(), nil
 }
@@ -103,6 +131,17 @@ func evaluateToolkitCondition(condition, toolkit string) (bool, error) {
 	}
 }
 
+func evaluateSenchaFeature(feature string) (bool, error) {
+	switch {
+	case feature == "legacyBrowser":
+		return false, nil
+	case feature == "logger", strings.HasPrefix(feature, "classSystem."):
+		return true, nil
+	default:
+		return false, fmt.Errorf("unknown feature")
+	}
+}
+
 func toolkitConditionMarker(line string) (string, string) {
 	line = strings.TrimSpace(line)
 	if !strings.HasPrefix(line, "//") {
@@ -115,6 +154,21 @@ func toolkitConditionMarker(line string) (string, string) {
 	}
 	if strings.HasPrefix(marker, "<if ") && strings.HasSuffix(marker, ">") {
 		return "open", strings.TrimSpace(strings.TrimSuffix(strings.TrimPrefix(marker, "<if "), ">"))
+	}
+	return "", ""
+}
+
+func featureConditionMarker(line string) (string, string) {
+	line = strings.TrimSpace(line)
+	if !strings.HasPrefix(line, "//") {
+		return "", ""
+	}
+	marker := strings.TrimSpace(strings.TrimPrefix(line, "//"))
+	if marker == "</feature>" {
+		return "close", ""
+	}
+	if strings.HasPrefix(marker, "<feature ") && strings.HasSuffix(marker, ">") {
+		return "open", strings.TrimSpace(strings.TrimSuffix(strings.TrimPrefix(marker, "<feature "), ">"))
 	}
 	return "", ""
 }
