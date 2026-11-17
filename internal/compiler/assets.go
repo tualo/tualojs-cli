@@ -21,9 +21,10 @@ type resolvedStylesheet struct {
 }
 
 type resolvedScript struct {
-	asset  ScriptAsset
-	source string
-	output string
+	asset           ScriptAsset
+	source          string
+	output          string
+	includeInBundle bool
 }
 
 type StyleSheet struct {
@@ -118,6 +119,9 @@ func resolveScripts(appRoot string, entries []jsEntry, toolkit string, ignore []
 			scripts = append(scripts, resolvedScript{asset: ScriptAsset{URL: "app.js"}})
 			continue
 		}
+		if entry.IncludeInBundle && entry.Remote {
+			return nil, nil, fmt.Errorf("JavaScript asset %q cannot be both remote and includeInBundle", entry.Path)
+		}
 		if entry.Remote {
 			scripts = append(scripts, resolvedScript{asset: ScriptAsset{URL: entry.Path, Remote: true}})
 			continue
@@ -148,6 +152,11 @@ func resolveScripts(appRoot string, entries []jsEntry, toolkit string, ignore []
 			return nil, nil, err
 		}
 		url := filepath.ToSlash(filepath.Join("js", relative))
+		if entry.IncludeInBundle {
+			scripts = append(scripts, resolvedScript{source: source, output: filepath.ToSlash(relative), includeInBundle: true})
+			watchPaths = append(watchPaths, source)
+			continue
+		}
 		scripts = append(scripts, resolvedScript{
 			asset:  ScriptAsset{URL: url},
 			source: source,
@@ -161,6 +170,9 @@ func resolveScripts(appRoot string, entries []jsEntry, toolkit string, ignore []
 func copyScripts(scripts []resolvedScript, outputRoot, bundlePath string) ([]ScriptAsset, error) {
 	assets := make([]ScriptAsset, 0, len(scripts))
 	for _, script := range scripts {
+		if script.includeInBundle {
+			continue
+		}
 		if script.source == "" {
 			assets = append(assets, script.asset)
 			continue

@@ -492,6 +492,32 @@ func TestBuildCopiesNonBundleJavaScriptAssetsInManifestOrder(t *testing.T) {
 	}
 }
 
+func TestBuildIncludesMarkedJavaScriptInBundle(t *testing.T) {
+	root := makeFixture(t, map[string]string{
+		"app.json":     `{"name":"Example","namespace":"Example","classpath":["app"],"js":[{"path":"support.js","includeInBundle":true},{"path":"app.js","bundle":true}]}`,
+		"app.js":       `Ext.application({name: 'Example'});`,
+		"app/Empty.js": "",
+		"support.js":   `window.ExampleSupport = true;`,
+	})
+	result, err := Build(root, "out")
+	if err != nil {
+		t.Fatal(err)
+	}
+	bundle, err := os.ReadFile(result.OutputPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	content := string(bundle)
+	support := strings.Index(content, "// Source: support.js")
+	entry := strings.Index(content, "// Source: app.js")
+	if support < 0 || entry < 0 || support >= entry || !strings.Contains(content, "window.ExampleSupport = true") {
+		t.Fatalf("includeInBundle source was not bundled before app entry: %s", content)
+	}
+	if len(result.Scripts) != 1 || result.Scripts[0].URL != "app.js" {
+		t.Fatalf("bundle script manifest = %#v, want only app.js", result.Scripts)
+	}
+}
+
 func TestBuildWritesLineLevelSourceMap(t *testing.T) {
 	root := makeFixture(t, map[string]string{
 		"app.json": `{"name":"Example","namespace":"Example","classpath":["app"],"js":[{"path":"app.js","bundle":true}]}`,

@@ -11,11 +11,12 @@ import (
 const targetExtCompatVersion = "8.0.0"
 
 type classSourcePath struct {
-	path      string
-	base      string
-	prefix    string
-	optional  bool
-	framework bool
+	path          string
+	base          string
+	prefix        string
+	optional      bool
+	framework     bool
+	alwaysInclude bool
 }
 
 type packageResolution struct {

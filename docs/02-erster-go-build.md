@@ -27,6 +27,7 @@ Das Ergebnis liegt unter `testdata/fixtures/minimal-modern/build-go/app.js`. Rel
 - Ersetzt `${toolkit.name}` in Classpath- und Override-Pfaden; universelle Apps wählen das Toolkit mit `-toolkit classic|modern`.
 - Verlangt genau einen JavaScript-Einstieg mit `bundle: true`.
 - Kopiert lokale zusätzliche JavaScript-Einträge und erhält die Reihenfolge von lokalen, gebündelten und Remote-Scripts aus `app.json.js`.
+- Nimmt lokale `includeInBundle:true`-Scripts in das Go-Bundle auf.
 - Kopiert lokale `app.json.resources`-Dateien und -Verzeichnisse mit optionalen `output`-Zielen ins Build-Verzeichnis.
 - Kopiert lokale statische `app.json.css`-Dateien und bindet sie in der Preview ein; generierte Sass-CSS-Pfade bleiben beim Theme-CSS-Fallback.
 - Sucht `.js`-Dateien in den Classpath-Verzeichnissen und erkennt `Ext.define`-Deklarationen sowohl mit Objekt- als auch mit Factory-Funktions-Konfiguration sowie `Ext.application`.

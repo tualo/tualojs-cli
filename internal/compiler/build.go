@@ -46,13 +46,14 @@ type ScriptAsset struct {
 }
 
 type sourceFile struct {
-	path         string
-	name         string
-	data         []byte
-	originalData []byte
-	priority     int
-	framework    bool
-	class        []classDeclaration
+	path          string
+	name          string
+	data          []byte
+	originalData  []byte
+	priority      int
+	framework     bool
+	alwaysInclude bool
+	class         []classDeclaration
 }
 
 type overrideDeclaration struct {
@@ -203,6 +204,16 @@ func BuildWithOutputOptions(appDir, outputDir, selectedToolkit string, normalize
 	for _, path := range config.Overrides {
 		paths = append(paths, classSourcePath{path: path, base: root, optional: true})
 	}
+	for _, script := range scripts {
+		if !script.includeInBundle {
+			continue
+		}
+		relative, err := filepath.Rel(root, script.source)
+		if err != nil {
+			return BuildResult{}, err
+		}
+		paths = append(paths, classSourcePath{path: relative, base: root, alwaysInclude: true})
+	}
 	paths = append(paths, appPackages.classpaths...)
 	paths = append(paths, appPackages.overrides...)
 	for _, sourcePath := range append(frameworkPackages.classpaths, frameworkPackages.overrides...) {
@@ -235,10 +246,47 @@ func BuildWithOutputOptions(appDir, outputDir, selectedToolkit string, normalize
 	if err != nil {
 		return BuildResult{}, err
 	}
+	includeSources := make([]sourceFile, 0)
+	for _, source := range sources {
+		if !source.alwaysInclude {
+			continue
+		}
+		includeSources = append(includeSources, source)
+	}
+	sort.SliceStable(includeSources, func(i, j int) bool {
+		if includeSources[i].priority == includeSources[j].priority {
+			return includeSources[i].name < includeSources[j].name
+		}
+		return includeSources[i].priority < includeSources[j].priority
+	})
+	for _, source := range includeSources {
+		for _, declaration := range source.class {
+			if declaration.override == "" {
+				appDependencies = append(appDependencies, declaration.name)
+			}
+		}
+	}
 	ordered, warnings, frameworkClasses, err := orderSources(config.Namespace, appDependencies, classes, overrides, aliases)
 	if err != nil {
 		return BuildResult{}, err
 	}
+	orderedPaths := make(map[string]bool, len(ordered))
+	for _, source := range ordered {
+		orderedPaths[source.path] = true
+	}
+	var includeOnly []sourceFile
+	for _, source := range sources {
+		if source.alwaysInclude && !orderedPaths[source.path] {
+			includeOnly = append(includeOnly, source)
+		}
+	}
+	sort.SliceStable(includeOnly, func(i, j int) bool {
+		if includeOnly[i].priority == includeOnly[j].priority {
+			return includeOnly[i].name < includeOnly[j].name
+		}
+		return includeOnly[i].priority < includeOnly[j].priority
+	})
+	ordered = append(ordered, includeOnly...)
 	entryName, _ := filepath.Rel(root, entryPath)
 	entry := sourceFile{path: entryPath, name: filepath.ToSlash(entryName), data: entryData, originalData: entryOriginalData}
 	ordered = append(ordered, entry)
@@ -455,6 +503,7 @@ func bundleEntry(config appConfig) (string, error) {
 
 func loadClasses(paths []classSourcePath, mode, appRoot string, ignore []*regexp.Regexp) ([]sourceFile, map[string]sourceFile, map[string][]overrideDeclaration, map[string][]string, map[string]string, error) {
 	var sources []sourceFile
+	seenSources := make(map[string]int)
 	for priority, sourcePath := range paths {
 		path, err := projectPath(sourcePath.base, sourcePath.path)
 		if err != nil {
@@ -472,7 +521,7 @@ func loadClasses(paths []classSourcePath, mode, appRoot string, ignore []*regexp
 				continue
 			}
 			if strings.EqualFold(filepath.Ext(path), ".js") {
-				if err := appendSource(sourcePath.base, path, sourcePath.prefix, priority, sourcePath.framework, mode, &sources); err != nil {
+				if err := appendUniqueSource(sourcePath.base, path, sourcePath.prefix, priority, sourcePath.framework, sourcePath.alwaysInclude, mode, &sources, seenSources); err != nil {
 					return nil, nil, nil, nil, nil, err
 				}
 			}
@@ -491,7 +540,7 @@ func loadClasses(paths []classSourcePath, mode, appRoot string, ignore []*regexp
 			if isIgnoredProjectPath(appRoot, filePath, ignore) {
 				return nil
 			}
-			return appendSource(sourcePath.base, filePath, sourcePath.prefix, priority, sourcePath.framework, mode, &sources)
+			return appendUniqueSource(sourcePath.base, filePath, sourcePath.prefix, priority, sourcePath.framework, sourcePath.alwaysInclude, mode, &sources, seenSources)
 		})
 		if err != nil {
 			return nil, nil, nil, nil, nil, fmt.Errorf("scan source path %q: %w", sourcePath.path, err)
@@ -626,7 +675,28 @@ func preferredCandidate(candidates []classCandidate) (string, bool) {
 	return preferred[0].source.path, true
 }
 
-func appendSource(root, path, prefix string, priority int, framework bool, mode string, sources *[]sourceFile) error {
+func appendUniqueSource(root, path, prefix string, priority int, framework, alwaysInclude bool, mode string, sources *[]sourceFile, seen map[string]int) error {
+	absolute, err := filepath.Abs(path)
+	if err != nil {
+		return err
+	}
+	if index, exists := seen[absolute]; exists {
+		source := &(*sources)[index]
+		source.framework = source.framework || framework
+		source.alwaysInclude = source.alwaysInclude || alwaysInclude
+		if priority < source.priority {
+			source.priority = priority
+		}
+		return nil
+	}
+	if err := appendSource(root, absolute, prefix, priority, framework, alwaysInclude, mode, sources); err != nil {
+		return err
+	}
+	seen[absolute] = len(*sources) - 1
+	return nil
+}
+
+func appendSource(root, path, prefix string, priority int, framework, alwaysInclude bool, mode string, sources *[]sourceFile) error {
 	data, err := os.ReadFile(path)
 	if err != nil {
 		return fmt.Errorf("read source %s: %w", path, err)
@@ -648,7 +718,7 @@ func appendSource(root, path, prefix string, priority int, framework bool, mode 
 	if err != nil {
 		return err
 	}
-	*sources = append(*sources, sourceFile{path: path, name: prefix + filepath.ToSlash(relative), data: data, originalData: originalData, priority: priority, framework: framework, class: declarations})
+	*sources = append(*sources, sourceFile{path: path, name: prefix + filepath.ToSlash(relative), data: data, originalData: originalData, priority: priority, framework: framework, alwaysInclude: alwaysInclude, class: declarations})
 	return nil
 }
 

@@ -8,6 +8,8 @@ Lokale statische Stylesheets aus `app.json.css` werden an ihrem relativen Pfad i
 
 Zusätzliche `app.json.js`-Einträge mit `bundle:false` werden ebenfalls in ihrer Manifest-Reihenfolge kopiert und geladen. `remote:true`-Einträge werden nicht kopiert und als externe Script-URL in der Preview beibehalten.
 
+Ein lokales Script mit `includeInBundle:true` wird statt als separate Datei in das Go-Bundle aufgenommen. Seine statischen Ext-Klassendeklarationen nehmen an der normalen Dependency-Auflösung teil.
+
 Build-Pfade bleiben auf das App-Verzeichnis beschränkt, Output-Pfade auf den Ressourcen-Zielordner. Symlinks werden übersprungen und doppelte Zielpfade mit unterschiedlichem Inhalt als Konflikt gemeldet. Resource-Quellpfade werden vom Watcher beobachtet. Die Preview liefert generierte Ressourcen unter `/resources/` aus.
 
 Der Sencha-Platzhalter `${build.id}` wird in Ressourcenpfaden anhand vorhandener `build/<mode>/<app-name>`-Verzeichnisse aufgelöst. Für Development-Builds wird zunächst das Development-Verzeichnis, danach ein vorhandener Production-Build verwendet; fehlt das referenzierte Verzeichnis, wird dieser Resource-Eintrag übersprungen.
@@ -20,6 +22,7 @@ Transitive SDK-Packages können zusätzlich `sencha.resources` deklarieren. Dies
 - Integrationstest für `${build.id}/resources` aus einem vorherigen Sencha-Build.
 - Preview-HTTP-Test für den Abruf einer kopierten Resource.
 - Build- und Preview-Test für ein lokales `app.json.css`-Stylesheet.
+- Build-Test für ein per `includeInBundle` eingebettetes JavaScript-Hilfsscript.
 - Fake-SDK-Integrationstest für ein transitive Package-Resource-Verzeichnis.
 - `testdata/sample` wird aus seinem Sencha-`resources`-Ordner nach `build-go/resources/shared` kopiert.
 

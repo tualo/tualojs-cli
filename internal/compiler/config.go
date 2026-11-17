@@ -56,9 +56,10 @@ func (p *pathList) UnmarshalJSON(data []byte) error {
 }
 
 type jsEntry struct {
-	Path   string `json:"path"`
-	Bundle bool   `json:"bundle"`
-	Remote bool   `json:"remote"`
+	Path            string `json:"path"`
+	Bundle          bool   `json:"bundle"`
+	IncludeInBundle bool   `json:"includeInBundle"`
+	Remote          bool   `json:"remote"`
 }
 
 type resourceEntry struct {
