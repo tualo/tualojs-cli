@@ -139,6 +139,9 @@ func parseExtMetadata(source string) ([]classDeclaration, []string, []string, er
 		if !is(tokens, i, "Ext") || !is(tokens, i+1, ".") {
 			continue
 		}
+		if is(tokens, i+2, "ClassManager") && is(tokens, i+3, ".") && is(tokens, i+4, "instantiateByAlias") && is(tokens, i+5, "(") && i+6 < len(tokens) {
+			sourceDependencies = append(sourceDependencies, stringArray(tokens, i+6, len(tokens))...)
+		}
 
 		switch tokens[i+2].value {
 		case "define":
@@ -192,6 +195,10 @@ func parseExtMetadata(source string) ([]classDeclaration, []string, []string, er
 		case "widget":
 			if i+4 < len(tokens) && is(tokens, i+3, "(") && tokens[i+4].kind == stringToken && isStaticString(tokens, i+4, len(tokens)) {
 				sourceDependencies = append(sourceDependencies, widgetAlias(tokens[i+4].value))
+			}
+		case "createByAlias":
+			if i+4 < len(tokens) && is(tokens, i+3, "(") && tokens[i+4].kind == stringToken && isStaticString(tokens, i+4, len(tokens)) {
+				sourceDependencies = append(sourceDependencies, tokens[i+4].value)
 			}
 		}
 	}

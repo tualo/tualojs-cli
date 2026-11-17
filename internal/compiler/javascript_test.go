@@ -190,6 +190,21 @@ func TestParseAlternateClassNames(t *testing.T) {
 	}
 }
 
+func TestParseAliasFactoryCalls(t *testing.T) {
+	source := `
+Ext.createByAlias('widget.panel');
+Ext.ClassManager.instantiateByAlias('plugin.gridexporter', config);
+`
+	_, _, dependencies, err := parseExtMetadata(source)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []string{"widget.panel", "plugin.gridexporter"}
+	if !reflect.DeepEqual(dependencies, want) {
+		t.Fatalf("alias factory dependencies = %#v, want %#v", dependencies, want)
+	}
+}
+
 func TestParseLoaderPathMappings(t *testing.T) {
 	source := `
 Ext.Loader.setPath('Example.dashboard', './dashboard');

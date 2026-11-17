@@ -44,7 +44,13 @@ type pathList []string
 func (p *pathList) UnmarshalJSON(data []byte) error {
 	var single string
 	if err := json.Unmarshal(data, &single); err == nil {
-		*p = []string{single}
+		var paths []string
+		for _, path := range strings.Split(single, ",") {
+			if path = strings.TrimSpace(path); path != "" {
+				paths = append(paths, path)
+			}
+		}
+		*p = paths
 		return nil
 	}
 	var multiple []string
@@ -210,9 +216,11 @@ func projectPath(root, path string) (string, error) {
 	return absolute, nil
 }
 
-func expandToolkitPaths(paths []string, toolkit string) ([]string, error) {
+func expandAppPaths(paths []string, appRoot, appName, toolkit string) ([]string, error) {
 	var expanded []string
 	for _, path := range paths {
+		path = strings.ReplaceAll(path, "${app.dir}", appRoot)
+		path = strings.ReplaceAll(path, "${app.name}", appName)
 		if strings.Contains(path, "${toolkit.name}") {
 			if toolkit == "" {
 				return nil, fmt.Errorf("path %q requires a toolkit; pass -toolkit classic or -toolkit modern", path)

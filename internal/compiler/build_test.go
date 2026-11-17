@@ -251,7 +251,8 @@ func TestBuildResolvesXtypeAndWidgetAliases(t *testing.T) {
 		"app/view/Main.js": `Ext.define('Example.view.Main', {
     extend: 'Ext.Panel',
     items: [{ xtype: 'example-card' }],
-    createCard: function () { return Ext.widget('example-card'); }
+    createCard: function () { return Ext.widget('example-card'); },
+    createByAlias: function () { return Ext.createByAlias('widget.example-card'); }
 });`,
 		"app/view/Card.js": `Ext.define('Example.view.Card', {
     extend: 'Ext.Component',
@@ -690,6 +691,67 @@ func TestBuildExpandsToolkitClasspath(t *testing.T) {
 	}
 }
 
+func TestBuildExpandsAppPathMacros(t *testing.T) {
+	root := makeFixture(t, map[string]string{
+		"app.json":                  `{"name":"Example","namespace":"Example","classpath":["${app.dir}/app","${app.dir}/shared/${app.name}","${toolkit.name}/src"],"overrides":["${app.dir}/overrides/${app.name}"],"js":[{"path":"${app.dir}/app.js","bundle":true},{"path":"${app.dir}/assets/${app.name}.js"}],"css":[{"path":"${app.dir}/styles/${app.name}.css"}],"resources":[{"path":"${app.dir}/resources/${app.name}.txt","output":"${app.name}"}]}`,
+		"app.js":                    `Ext.application({name: 'Example', extend: 'Example.Root'}); Ext.require(['Example.Shared', 'Example.ToolkitClass']);`,
+		"app/Root.js":               `Ext.define('Example.Root', { extend: 'Ext.Base' });`,
+		"shared/Example/Shared.js":  `Ext.define('Example.Shared', { extend: 'Ext.Base' });`,
+		"modern/src/Toolkit.js":     `Ext.define('Example.ToolkitClass', { extend: 'Ext.Base' });`,
+		"overrides/Example/Root.js": `Ext.define('Example.RootOverride', { override: 'Example.Root', marker: true });`,
+		"assets/Example.js":         `window.exampleAsset = true;`,
+		"styles/Example.css":        `.example { color: red; }`,
+		"resources/Example.txt":     "resource content",
+	})
+
+	result, err := BuildWithToolkit(root, "out", "modern")
+	if err != nil {
+		t.Fatal(err)
+	}
+	bundle, err := os.ReadFile(result.OutputPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, source := range []string{"app/Root.js", "shared/Example/Shared.js", "modern/src/Toolkit.js", "overrides/Example/Root.js"} {
+		if !strings.Contains(string(bundle), "// Source: "+source) {
+			t.Errorf("bundle is missing expanded path source %s", source)
+		}
+	}
+	if len(result.Scripts) != 2 || result.Scripts[1].URL != "js/assets/Example.js" {
+		t.Fatalf("scripts = %#v, want expanded JavaScript asset URL", result.Scripts)
+	}
+	if len(result.StyleSheets) != 1 || result.StyleSheets[0].URL != "styles/Example.css" {
+		t.Fatalf("stylesheets = %#v, want expanded stylesheet URL", result.StyleSheets)
+	}
+	if _, err := os.Stat(filepath.Join(result.ResourcesPath, "Example", "Example.txt")); err != nil {
+		t.Fatalf("expanded resource output was not copied: %v", err)
+	}
+}
+
+func TestBuildAcceptsCommaSeparatedClasspath(t *testing.T) {
+	root := makeFixture(t, map[string]string{
+		"app.json":           `{"name":"Example","namespace":"Example","classpath":"app, shared","js":[{"path":"app.js","bundle":true}]}`,
+		"app.js":             `Ext.application({name: 'Example', extend: 'Example.Application'});`,
+		"app/Application.js": `Ext.define('Example.Application', { mainView: 'Example.Main' });`,
+		"app/Main.js":        `Ext.define('Example.Main', { extend: 'Example.SharedBase' });`,
+		"shared/Base.js":     `Ext.define('Example.SharedBase', { extend: 'Ext.Component' });`,
+	})
+	result, err := Build(root, "out")
+	if err != nil {
+		t.Fatal(err)
+	}
+	bundle, err := os.ReadFile(result.OutputPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	content := string(bundle)
+	base := strings.Index(content, "// Source: shared/Base.js")
+	main := strings.Index(content, "// Source: app/Main.js")
+	if base < 0 || main < 0 || base >= main {
+		t.Fatalf("comma-separated classpath was not loaded, positions = %d, %d", base, main)
+	}
+}
+
 func TestBuildPrefersCanonicalFilenameForDuplicateClass(t *testing.T) {
 	root := makeFixture(t, map[string]string{
 		"app.json":            `{"name":"Example","namespace":"Example","classpath":["app"],"js":[{"path":"app.js","bundle":true}]}`,
@@ -733,14 +795,17 @@ func TestBuildLoadsTransitiveSDKPackageClasspaths(t *testing.T) {
 // local workspace configuration
 "frameworks": {"ext": {"path": "sdk", "version": "8.0.0.43"}}
 }`,
-		"sdk/package.json":                      `{"name":"ext","version":"8.0.0.43","compatVersion":"8.0.0"}`,
-		"sdk/packages/core/package.json":        `{"version":"8.0.0.43","sencha":{"name":"core","classpath":"${package.dir}/src"}}`,
-		"sdk/modern/modern/package.json":        `{"version":"8.0.0.43","sencha":{"name":"modern","requires":["core"],"classpath":"${package.dir}/src"}}`,
-		"sdk/packages/base-lib/package.json":    `{"version":"1.0.0","sencha":{"name":"base-lib","classpath":"${package.dir}/src"}}`,
-		"sdk/packages/widget-lib/package.json":  `{"version":"1.0.0","sencha":{"name":"widget-lib","alternateName":["widget-alias"],"requires":["base-lib"],"classpath":["${package.dir}/src","${package.dir}/${toolkit.name}/src"],"resources":[{"path":"${package.dir}/resources","output":"shared"}]}}`,
-		"sdk/modern/locale/package.json":        `{"version":"8.0.0.43","sencha":{"name":"locale","alternateName":["ext-locale"],"classpath":"${package.dir}/src","overrides":"${package.dir}/overrides/${package.locale}"}}`,
-		"sdk/packages/base-lib/src/Base.js":     `Ext.define('Lib.Base', { extend: 'Ext.Base' });`,
-		"sdk/packages/widget-lib/src/Widget.js": `Ext.define('Lib.Widget', { extend: 'Lib.Base' });`,
+		"sdk/package.json":                                     `{"name":"ext","version":"8.0.0.43","compatVersion":"8.0.0"}`,
+		"sdk/packages/core/package.json":                       `{"version":"8.0.0.43","sencha":{"name":"core","classpath":"${package.dir}/src"}}`,
+		"sdk/modern/modern/package.json":                       `{"version":"8.0.0.43","sencha":{"name":"modern","requires":["core"],"classpath":"${package.dir}/src"}}`,
+		"sdk/packages/base-lib/package.json":                   `{"version":"1.0.0","sencha":{"name":"base-lib","classpath":"${package.dir}/src","resource":{"paths":"${package.dir}/resources"}}}`,
+		"sdk/packages/widget-lib/package.json":                 `{"version":"1.0.0","sencha":{"name":"widget-lib","alternateName":["widget-alias"],"requires":["base-lib"],"classpath":["${package.dir}/src","${package.dir}/${toolkit.name}/src"],"resource":{"paths":["${package.dir}/assets","${package.dir}/${toolkit.name}/resources"]},"resources":[{"path":"${package.dir}/resources","output":"shared"}]}}`,
+		"sdk/modern/locale/package.json":                       `{"version":"8.0.0.43","sencha":{"name":"locale","alternateName":["ext-locale"],"classpath":"${package.dir}/src","overrides":"${package.dir}/overrides/${package.locale}"}}`,
+		"sdk/packages/base-lib/src/Base.js":                    `Ext.define('Lib.Base', { extend: 'Ext.Base' });`,
+		"sdk/packages/base-lib/resources/base.txt":             "base resource",
+		"sdk/packages/widget-lib/src/Widget.js":                `Ext.define('Lib.Widget', { extend: 'Lib.Base' });`,
+		"sdk/packages/widget-lib/assets/terms.txt":             "widget asset",
+		"sdk/packages/widget-lib/modern/resources/toolkit.txt": "modern resource",
 		"sdk/packages/widget-lib/src/draw/AnimationParser.js": `Ext.define('Ext.draw.sprite.AnimationParser', function () {
     return { singleton: true, requires: ['Ext.draw.Color'] };
 });`,
@@ -771,12 +836,19 @@ func TestBuildLoadsTransitiveSDKPackageClasspaths(t *testing.T) {
 	if got, want := result.Packages, []string{"base-lib", "widget-lib", "locale"}; !reflect.DeepEqual(got, want) {
 		t.Fatalf("resolved packages = %#v, want %#v", got, want)
 	}
-	if result.ResourceFiles != 1 {
-		t.Fatalf("copied package resources = %d, want 1", result.ResourceFiles)
+	if result.ResourceFiles != 4 {
+		t.Fatalf("copied package resources = %d, want 4", result.ResourceFiles)
 	}
-	resource, err := os.ReadFile(filepath.Join(result.ResourcesPath, "shared", "icon.txt"))
-	if err != nil || string(resource) != "package resource" {
-		t.Fatalf("package resource = %q, err = %v", resource, err)
+	for name, want := range map[string]string{
+		"base.txt":    "base resource",
+		"icon.txt":    "package resource",
+		"terms.txt":   "widget asset",
+		"toolkit.txt": "modern resource",
+	} {
+		resource, err := os.ReadFile(filepath.Join(result.ResourcesPath, "shared", name))
+		if err != nil || string(resource) != want {
+			t.Errorf("package resource %s = %q, err = %v; want %q", name, resource, err, want)
+		}
 	}
 	bundle, err := os.ReadFile(result.OutputPath)
 	if err != nil {
@@ -841,6 +913,40 @@ func TestBuildResolvesToolkitSpecificPackageRequirements(t *testing.T) {
 	}
 	if got, want := modern.Packages, []string{"common", "modern-addon"}; !reflect.DeepEqual(got, want) {
 		t.Fatalf("modern packages = %#v, want %#v", got, want)
+	}
+}
+
+func TestBuildFiltersPackagesForOtherToolkit(t *testing.T) {
+	root := makeFixture(t, map[string]string{
+		"app.json":                                `{"name":"Example","namespace":"Example","toolkit":"modern","requires":["classic-addon"],"classpath":["app"],"js":[{"path":"app.js","bundle":true}]}`,
+		"workspace.json":                          `{"frameworks":{"ext":{"path":"sdk","version":"8.0.0.43"}}}`,
+		"sdk/package.json":                        `{"name":"ext","version":"8.0.0.43","compatVersion":"8.0.0"}`,
+		"sdk/classic/classic/package.json":        `{"version":"8.0.0.43","sencha":{"name":"classic","classpath":"${package.dir}/src"}}`,
+		"sdk/modern/modern/package.json":          `{"version":"8.0.0.43","sencha":{"name":"modern","classpath":"${package.dir}/src"}}`,
+		"sdk/packages/classic-addon/package.json": `{"version":"1.0.0","sencha":{"name":"classic-addon","toolkit":"classic","classpath":"${package.dir}/src"}}`,
+		"sdk/packages/classic-addon/src/Addon.js": `Ext.define('Lib.Addon', {});`,
+		"app.js":       `Ext.application({name: 'Example'}); Ext.require('Lib.Addon');`,
+		"app/Empty.js": "",
+	})
+
+	_, err := BuildWithToolkit(root, "out-modern", "modern")
+	if err == nil || !strings.Contains(err.Error(), `required Ext JS package "classic-addon" was not found`) {
+		t.Fatalf("modern build error = %v, want classic-only package to be filtered", err)
+	}
+
+	classic, err := BuildWithToolkit(root, "out-classic", "classic")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(classic.Packages, []string{"classic-addon"}) {
+		t.Fatalf("classic packages = %#v, want classic-addon", classic.Packages)
+	}
+	bundle, err := os.ReadFile(classic.OutputPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(bundle), "sdk/packages/classic-addon/src/Addon.js") {
+		t.Fatalf("classic-only package source was not bundled: %s", bundle)
 	}
 }
 

@@ -30,7 +30,7 @@ Danach die im Terminal angezeigte lokale URL öffnen. Mit `Ctrl+C` wird der Serv
 
 ## Grenzen
 
-Die Preview verwendet das vorgebaute Debug-Runtime-Script des Ext-SDK und das ausgewählte Theme. Sie erzeugt noch nicht den Sencha-Microloader, Produktions-Bundles, Package-Ressourcen oder Sass-Ausgaben. Der Server bindet standardmäßig nur an `127.0.0.1`.
+Die Preview verwendet das vorgebaute Debug-Runtime-Script des Ext-SDK und das ausgewählte Theme. Sie erzeugt noch nicht den Sencha-Microloader, Produktions-Bundles oder Sass-Ausgaben. App- und aufgelöste Package-Ressourcen werden vom Build kopiert. Der Server bindet standardmäßig nur an `127.0.0.1`.
 
 ## Prüfungen
 

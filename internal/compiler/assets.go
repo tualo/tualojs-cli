@@ -47,7 +47,7 @@ func resolveStylesheets(appRoot string, config appConfig, toolkit, mode string, 
 			continue
 		}
 		path := strings.ReplaceAll(entry.Path, "${build.id}", resolveBuildID(appRoot, config.Name, mode))
-		paths, err := expandToolkitPaths([]string{path}, toolkit)
+		paths, err := expandAppPaths([]string{path}, appRoot, config.Name, toolkit)
 		if err != nil {
 			return nil, nil, err
 		}
@@ -111,7 +111,7 @@ func copyStylesheets(stylesheets []resolvedStylesheet, outputRoot, bundlePath st
 	return copied, nil
 }
 
-func resolveScripts(appRoot string, entries []jsEntry, toolkit string, ignore []*regexp.Regexp) ([]resolvedScript, []string, error) {
+func resolveScripts(appRoot, appName string, entries []jsEntry, toolkit string, ignore []*regexp.Regexp) ([]resolvedScript, []string, error) {
 	var scripts []resolvedScript
 	var watchPaths []string
 	for _, entry := range entries {
@@ -129,7 +129,7 @@ func resolveScripts(appRoot string, entries []jsEntry, toolkit string, ignore []
 		if strings.Contains(entry.Path, "${framework.dir}") || strings.Contains(entry.Path, "${build.") {
 			continue
 		}
-		paths, err := expandToolkitPaths([]string{entry.Path}, toolkit)
+		paths, err := expandAppPaths([]string{entry.Path}, appRoot, appName, toolkit)
 		if err != nil {
 			return nil, nil, err
 		}
@@ -212,7 +212,7 @@ func resolveResources(appRoot, appName, mode string, entries resourceList, toolk
 		}
 		buildID := resolveBuildID(appRoot, appName, mode)
 		resourcePath := strings.ReplaceAll(entry.Path, "${build.id}", buildID)
-		paths, err := expandToolkitPaths([]string{resourcePath}, toolkit)
+		paths, err := expandAppPaths([]string{resourcePath}, appRoot, appName, toolkit)
 		if err != nil {
 			return nil, nil, err
 		}
@@ -232,7 +232,7 @@ func resolveResources(appRoot, appName, mode string, entries resourceList, toolk
 		}
 		output := strings.ReplaceAll(entry.Output, "${build.id}", buildID)
 		if output != "" {
-			outputs, err := expandToolkitPaths([]string{output}, toolkit)
+			outputs, err := expandAppPaths([]string{output}, appRoot, appName, toolkit)
 			if err != nil {
 				return nil, nil, err
 			}
@@ -240,7 +240,11 @@ func resolveResources(appRoot, appName, mode string, entries resourceList, toolk
 		} else if info.IsDir() && filepath.Base(filepath.Clean(paths[0])) == "resources" {
 			output = "."
 		} else {
-			output = filepath.ToSlash(filepath.Clean(paths[0]))
+			relative, err := filepath.Rel(appRoot, source)
+			if err != nil {
+				return nil, nil, err
+			}
+			output = filepath.ToSlash(filepath.Clean(relative))
 		}
 		if err := validateResourceOutput(output); err != nil {
 			return nil, nil, fmt.Errorf("resource output for %q: %w", entry.Path, err)

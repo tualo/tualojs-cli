@@ -128,11 +128,11 @@ func BuildWithOutputOptions(appDir, outputDir, selectedToolkit string, normalize
 			theme = "theme-material"
 		}
 	}
-	config.Classpath, err = expandToolkitPaths(config.Classpath, toolkit)
+	config.Classpath, err = expandAppPaths(config.Classpath, root, config.Name, toolkit)
 	if err != nil {
 		return BuildResult{}, err
 	}
-	config.Overrides, err = expandToolkitPaths(config.Overrides, toolkit)
+	config.Overrides, err = expandAppPaths(config.Overrides, root, config.Name, toolkit)
 	if err != nil {
 		return BuildResult{}, err
 	}
@@ -170,11 +170,16 @@ func BuildWithOutputOptions(appDir, outputDir, selectedToolkit string, normalize
 	if err != nil {
 		return BuildResult{}, err
 	}
+	entryPaths, err := expandAppPaths([]string{entryPath}, root, config.Name, toolkit)
+	if err != nil {
+		return BuildResult{}, err
+	}
+	entryPath = entryPaths[0]
 	entryPath, err = projectPath(root, entryPath)
 	if err != nil {
 		return BuildResult{}, fmt.Errorf("JavaScript entry: %w", err)
 	}
-	scripts, scriptWatchPaths, err := resolveScripts(root, config.JavaScript, toolkit, ignorePatterns)
+	scripts, scriptWatchPaths, err := resolveScripts(root, config.Name, config.JavaScript, toolkit, ignorePatterns)
 	if err != nil {
 		return BuildResult{}, err
 	}

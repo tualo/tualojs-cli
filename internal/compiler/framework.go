@@ -47,12 +47,16 @@ type sdkManifest struct {
 type packageManifest struct {
 	Version string `json:"version"`
 	Sencha  struct {
-		Name          string       `json:"name"`
-		AlternateName pathList     `json:"alternateName"`
-		Requires      pathList     `json:"requires"`
-		Classpath     pathList     `json:"classpath"`
-		Overrides     pathList     `json:"overrides"`
-		Resources     resourceList `json:"resources"`
+		Name          string   `json:"name"`
+		Toolkit       string   `json:"toolkit"`
+		AlternateName pathList `json:"alternateName"`
+		Requires      pathList `json:"requires"`
+		Classpath     pathList `json:"classpath"`
+		Overrides     pathList `json:"overrides"`
+		Resource      struct {
+			Paths pathList `json:"paths"`
+		} `json:"resource"`
+		Resources resourceList `json:"resources"`
 	} `json:"sencha"`
 }
 
@@ -168,7 +172,14 @@ func resolveAppPackages(appRoot string, required []string, toolkit, locale strin
 		}
 		resolution.classpaths = append(resolution.classpaths, classpath...)
 		resolution.overrides = append(resolution.overrides, overrides...)
-		resources, resourcePaths, err := expandPackageResources(pkg, pkg.manifest.Sencha.Resources, toolkit, locale)
+		resourceEntries := append(resourceList{}, pkg.manifest.Sencha.Resources...)
+		for _, path := range pkg.manifest.Sencha.Resource.Paths {
+			if strings.TrimSpace(path) == "" {
+				continue
+			}
+			resourceEntries = append(resourceEntries, resourceEntry{Path: path})
+		}
+		resources, resourcePaths, err := expandPackageResources(pkg, resourceEntries, toolkit, locale)
 		if err != nil {
 			return packageResolution{}, err
 		}
@@ -269,6 +280,9 @@ func indexSDKPackages(sdkRoot, toolkit string) (map[string]*sdkPackage, error) {
 				return nil, fmt.Errorf("parse package manifest in %s: %w", root, err)
 			}
 			if manifest.Sencha.Name == "" {
+				continue
+			}
+			if (manifest.Sencha.Toolkit == "classic" || manifest.Sencha.Toolkit == "modern") && toolkit != "" && manifest.Sencha.Toolkit != toolkit {
 				continue
 			}
 			pkg := &sdkPackage{root: root, manifestPath: filepath.Join(root, "package.json"), manifest: manifest}
