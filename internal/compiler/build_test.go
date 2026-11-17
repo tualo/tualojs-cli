@@ -899,19 +899,21 @@ func TestBuildLoadsTransitiveSDKPackageClasspaths(t *testing.T) {
 
 func TestBuildLoadsStandardSDKPackageManifestFields(t *testing.T) {
 	root := makeFixture(t, map[string]string{
-		"app.json":                                             `{"name":"Example","namespace":"Example","toolkit":"classic","requires":["exporter"],"classpath":["app"],"js":[{"path":"app.js","bundle":true}]}`,
-		"workspace.json":                                       `{"frameworks":{"ext":{"path":"sdk","version":"8.0.0.43"}}}`,
-		"sdk/package.json":                                     `{"name":"ext","version":"8.0.0.43","compatVersion":"8.0.0"}`,
-		"sdk/packages/core/package.json":                       `{"version":"8.0.0.43","sencha":{"name":"core","classpath":"${package.dir}/src"}}`,
-		"sdk/packages/exporter/package.json":                   `{"name":"exporter","requires":["core"],"classpath":["${package.dir}/src","${package.dir}/${toolkit.name}/src"],"overrides":"${package.dir}/overrides"}`,
-		"sdk/packages/core/src/Core.js":                        `Ext.define('Lib.Core', {});`,
-		"sdk/packages/exporter/src/Exporter.js":                `Ext.define('Lib.Exporter', { extend: 'Lib.Core' });`,
-		"sdk/packages/exporter/src/Widget.js":                  `Ext.define('Lib.Widget', {});`,
-		"sdk/packages/exporter/classic/src/ExporterClassic.js": `Ext.define('Lib.ExporterClassic', {});`,
-		"sdk/packages/exporter/overrides/WidgetOverride.js":    `Ext.define('Lib.overrides.Widget', { override: 'Lib.Widget', packageOverride: true });`,
-		"sdk/classic/classic/package.json":                     `{"version":"8.0.0.43","sencha":{"name":"classic","requires":["core"],"classpath":"${package.dir}/src"}}`,
-		"app.js":                                               `Ext.application({name: 'Example', extend: 'Example.Application'});`,
-		"app/Application.js":                                   `Ext.define('Example.Application', { extend: 'Ext.app.Application', requires: ['Lib.Core', 'Lib.Exporter', 'Lib.ExporterClassic', 'Lib.Widget'] });`,
+		"app.json":                                                         `{"name":"Example","namespace":"Example","toolkit":"classic","requires":["exporter"],"classpath":["app"],"js":[{"path":"app.js","bundle":true}]}`,
+		"workspace.json":                                                   `{"frameworks":{"ext":{"path":"sdk","version":"8.0.0.43"}}}`,
+		"sdk/package.json":                                                 `{"name":"ext","version":"8.0.0.43","compatVersion":"8.0.0"}`,
+		"sdk/packages/core/package.json":                                   `{"version":"8.0.0.43","sencha":{"name":"core","classpath":"${package.dir}/src"}}`,
+		"sdk/packages/exporter/package.json":                               `{"name":"exporter","requires":["core"],"classpath":["${package.dir}/src","${package.dir}/${toolkit.name}/src"],"overrides":["${package.dir}/overrides","${package.dir}/${toolkit.name}/overrides"]}`,
+		"sdk/packages/core/src/Core.js":                                    `Ext.define('Lib.Core', {});`,
+		"sdk/packages/exporter/src/Exporter.js":                            `Ext.define('Lib.Exporter', { extend: 'Lib.Core' });`,
+		"sdk/packages/exporter/src/Widget.js":                              `Ext.define('Lib.Widget', {});`,
+		"sdk/packages/exporter/classic/src/ExporterClassic.js":             `Ext.define('Lib.ExporterClassic', {});`,
+		"sdk/packages/exporter/overrides/WidgetOverride.js":                `Ext.define('Lib.overrides.Widget', { override: 'Lib.Widget', packageOverride: true });`,
+		"sdk/packages/exporter/classic/overrides/WidgetClassicOverride.js": `Ext.define('Lib.overrides.WidgetClassic', { override: 'Lib.Widget', toolkitOverride: 'classic' });`,
+		"sdk/packages/exporter/modern/overrides/WidgetModernOverride.js":   `Ext.define('Lib.overrides.WidgetModern', { override: 'Lib.Widget', toolkitOverride: 'modern' });`,
+		"sdk/classic/classic/package.json":                                 `{"version":"8.0.0.43","sencha":{"name":"classic","requires":["core"],"classpath":"${package.dir}/src"}}`,
+		"app.js":                                                           `Ext.application({name: 'Example', extend: 'Example.Application'});`,
+		"app/Application.js":                                               `Ext.define('Example.Application', { extend: 'Ext.app.Application', requires: ['Lib.Core', 'Lib.Exporter', 'Lib.ExporterClassic', 'Lib.Widget'] });`,
 	})
 
 	result, err := Build(root, "out")
@@ -930,15 +932,24 @@ func TestBuildLoadsStandardSDKPackageManifestFields(t *testing.T) {
 		"sdk/packages/exporter/classic/src/ExporterClassic.js",
 		"sdk/packages/exporter/src/Widget.js",
 		"sdk/packages/exporter/overrides/WidgetOverride.js",
+		"sdk/packages/exporter/classic/overrides/WidgetClassicOverride.js",
 	} {
 		if !strings.Contains(string(bundle), "// Source: "+source) {
 			t.Errorf("bundle does not include package source %s", source)
 		}
 	}
+	if strings.Contains(string(bundle), "WidgetModernOverride.js") {
+		t.Fatal("modern package override was included in a classic build")
+	}
 	widget := strings.Index(string(bundle), "// Source: sdk/packages/exporter/src/Widget.js")
-	override := strings.Index(string(bundle), "// Source: sdk/packages/exporter/overrides/WidgetOverride.js")
-	if widget < 0 || override < 0 || widget >= override {
-		t.Fatalf("package override should follow its target class: widget=%d override=%d", widget, override)
+	for _, overrideName := range []string{
+		"sdk/packages/exporter/overrides/WidgetOverride.js",
+		"sdk/packages/exporter/classic/overrides/WidgetClassicOverride.js",
+	} {
+		override := strings.Index(string(bundle), "// Source: "+overrideName)
+		if widget < 0 || override < 0 || widget >= override {
+			t.Errorf("package override %s should follow its target class: widget=%d override=%d", overrideName, widget, override)
+		}
 	}
 }
 

@@ -17,13 +17,16 @@ Framework-Ziele wie `Ext.Panel` können ebenfalls Overrides haben: sobald ein so
 
 Package-Overrides werden über die im SDK-Package-Manifest deklarierten `overrides`-Pfade eingelesen. Ein Package-Override wird wie ein App-Override nur für ein geladenes Ziel ausgegeben und folgt der Zieldatei im Bundle.
 
+`${toolkit.name}` in Package-Override-Pfaden wird für das ausgewählte Toolkit expandiert. So wird beispielsweise `classic/overrides` in einem Classic-Build und `modern/overrides` in einem Modern-Build verwendet.
+
 ## Prüfungen
 
 - Das Fixture enthält `overrides/Main.js`, das `GoCompilerFixture.view.main.Main` erweitert.
 - Der Go-Integrationstest prüft die Reihenfolge Ziel vor Override und stellt sicher, dass ein Override für ein nicht geladenes Ziel ausgeschlossen bleibt.
 - Integrationstest für ein SDK-Package mit Root-Manifestfeld `overrides` und einer Package-Zielklasse.
+- Toolkit-Test: Classic- und Modern-Package-Overrides werden über `${toolkit.name}` getrennt ausgewählt.
 - `sencha app build --dev` dient als Referenz für die Fixture-Klasse und den App-Override.
 
 ## Grenzen
 
-Das aktuelle Modell behandelt statisch benannte `Ext.define`-Overrides. Bedingte Overrides, Toolkit-/Plattformfilter und dynamisch berechnete Ziele sind noch nicht implementiert.
+Das aktuelle Modell behandelt statisch benannte `Ext.define`-Overrides und toolkit-spezifische Pfade. Bedingte Overrides, Plattformfilter und dynamisch berechnete Ziele sind noch nicht implementiert.
