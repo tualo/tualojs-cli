@@ -422,6 +422,36 @@ $height: dynamic(6px);
 	}
 }
 
+func TestCompileClassSassNormalizesNestedDynamicMapValues(t *testing.T) {
+	binary := os.Getenv("SASS")
+	if binary == "" {
+		binary = "sass"
+	}
+	if _, err := exec.LookPath(binary); err != nil {
+		t.Skip("Dart Sass is not installed")
+	}
+	root := t.TempDir()
+	source := filepath.Join(root, "Main.scss")
+	if err := os.WriteFile(source, []byte(`$summary-ui: dynamic((
+    font-weight: dynamic(bold),
+    padding: dynamic(8px 0)
+));
+.summary {
+    font-weight: map-get($summary-ui, font-weight);
+    padding: map-get($summary-ui, padding);
+}
+`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	css, _, err := compileClassSass(root, []string{source}, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Contains(css, []byte("font-weight: bold")) || !bytes.Contains(css, []byte("padding: 8px 0")) {
+		t.Fatalf("compiled Sass with nested dynamic map values = %s", css)
+	}
+}
+
 func TestNormalizeFashionDuplicateMixinArgument(t *testing.T) {
 	source := []byte(`@include border-management(
     $border-radius: $border-radius,

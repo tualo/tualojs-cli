@@ -2544,6 +2544,10 @@ func normalizeFashionDynamic(source []byte) ([]byte, bool, string) {
 			return nil, false, "unterminated dynamic() Sass variable assignment"
 		}
 		expression := strings.TrimSpace(text[expressionStart:closeIndex])
+		expression, _, nestedReason := unwrapNestedFashionDynamic(expression)
+		if nestedReason != "" {
+			return nil, false, nestedReason
+		}
 		suffixStart := closeIndex + 1
 		lineEnd := strings.IndexByte(text[suffixStart:], '\n')
 		if lineEnd < 0 {
@@ -2560,7 +2564,7 @@ func normalizeFashionDynamic(source []byte) ([]byte, bool, string) {
 				lineEnding = "\r\n"
 			}
 		}
-		if expression == "" || strings.Contains(expression, "dynamic(") || !fashionDynamicSuffix.MatchString(suffix) {
+		if expression == "" || !fashionDynamicSuffix.MatchString(suffix) {
 			return nil, false, "dynamic() expression is outside the supported Sass variable assignment subset"
 		}
 		if !strings.Contains(suffix, ";") {
@@ -2587,6 +2591,32 @@ func normalizeFashionDynamic(source []byte) ([]byte, bool, string) {
 		changed = changed || reordered
 	}
 	return normalized, changed, ""
+}
+
+func unwrapNestedFashionDynamic(expression string) (string, bool, string) {
+	var output strings.Builder
+	changed := false
+	position := 0
+	for position < len(expression) {
+		start, expressionStart := findFashionDynamicStart(expression, position)
+		if start < 0 {
+			output.WriteString(expression[position:])
+			break
+		}
+		close := findFashionDynamicEnd(expression, expressionStart)
+		if close < 0 {
+			return "", false, "unterminated nested dynamic() Sass value"
+		}
+		inner, _, reason := unwrapNestedFashionDynamic(expression[expressionStart:close])
+		if reason != "" {
+			return "", false, reason
+		}
+		output.WriteString(expression[position:start])
+		output.WriteString(inner)
+		position = close + 1
+		changed = true
+	}
+	return output.String(), changed, ""
 }
 
 func findFashionDynamicStart(source string, start int) (int, int) {
