@@ -1400,6 +1400,16 @@ func sassImportPaths(source []byte) []string {
 	return paths
 }
 
+func isSassCompassCompatibilityImport(importPath string) bool {
+	path := strings.TrimSuffix(strings.ToLower(filepath.ToSlash(strings.TrimSpace(importPath))), ".scss")
+	switch path {
+	case "compass", "compass/css3", "compass/css3/images":
+		return true
+	default:
+		return false
+	}
+}
+
 func inspectSassImportTree(appRoot, source string, visited map[string]bool) (bool, []string, error) {
 	absolute, err := filepath.Abs(source)
 	if err != nil {
@@ -1513,6 +1523,11 @@ func inlineSassImports(appRoot, importer string, source []byte, availableVariabl
 				if strings.HasSuffix(strings.ToLower(path), ".js") {
 					warnings = append(warnings, fmt.Sprintf("skipped Fashion JavaScript import %q in Sass source %s", path, current))
 					dropDirective = true
+					valuePrevious = pathMatch[1]
+					continue
+				}
+				if kind == "import" && isSassCompassCompatibilityImport(path) {
+					inlinedImport = true
 					valuePrevious = pathMatch[1]
 					continue
 				}
