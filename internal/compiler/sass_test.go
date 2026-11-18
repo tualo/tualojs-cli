@@ -1,6 +1,7 @@
 package compiler
 
 import (
+	"bytes"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -22,6 +23,63 @@ func TestCompileClassSassReportsMissingDartSass(t *testing.T) {
 	}
 }
 
+func TestThemeBaseFunctionSourcesQualifyAsSassHelpers(t *testing.T) {
+	binary := os.Getenv("SASS")
+	if binary == "" {
+		binary = "sass"
+	}
+	if _, err := exec.LookPath(binary); err != nil {
+		t.Skip("Dart Sass is not installed")
+	}
+	appRoot, err := filepath.Abs(filepath.Join("..", "..", "testdata", "ext-build", "default", "build", "production", "Tualo"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(appRoot, "ext", "modern", "theme-base", "sass", "etc", "functions.scss")
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !sassSourceIsSassHelper(data) {
+		t.Fatal("theme-base Sass functions should be preloaded as helpers")
+	}
+	stripped := stripFashionThemeBackgroundImageFunction(data)
+	if !bytes.Contains(stripped, []byte("@function vertical")) {
+		t.Fatal("removing theme-background-image should preserve the remaining theme functions")
+	}
+	entry := filepath.Join(appRoot, "ext", "modern", "theme-base", "sass", "etc", "all.scss")
+	helperRoots := packageSassEtcHelperRoots(filepath.Join(appRoot, "ext"), []string{entry})
+	helpers, err := resolveThemeSassHelperSources(appRoot, []string{entry}, helperRoots, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, helper := range helpers {
+		if helper == path {
+			calcPath := filepath.Join(filepath.Dir(path), "functions", "calc-math.scss")
+			calcData, err := os.ReadFile(calcPath)
+			if err != nil {
+				t.Fatal(err)
+			}
+			fixture := makeFixture(t, map[string]string{
+				"sdk/sass/etc/functions.scss":           string(data),
+				"sdk/sass/etc/functions/calc-math.scss": string(calcData),
+				"app/Theme.scss":                        `.theme { margin-top: vertical(4px 2px); }`,
+			})
+			functions := filepath.Join(fixture, "sdk", "sass", "etc", "functions.scss")
+			style := filepath.Join(fixture, "app", "Theme.scss")
+			css, warnings, err := compileClassSassWithInlineImports(fixture, []string{functions, style}, false, map[string]bool{functions: true}, nil, nil, nil)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if len(warnings) != 0 || !strings.Contains(string(css), "margin-top: 8px") {
+				t.Fatalf("compiled theme function CSS = %s, warnings = %#v", css, warnings)
+			}
+			return
+		}
+	}
+	t.Fatalf("theme-base functions source %s was not discovered in %#v", path, helpers)
+}
+
 func TestNormalizeFashionDynamicSassExpressions(t *testing.T) {
 	source := []byte(`$color: dynamic(#ddd);
 $spacing: dynamic(12px);
@@ -33,12 +91,16 @@ $rounded: dynamic(round(15px * 1.2));
 $implicit-semicolon: dynamic(#123)
 $forward: dynamic($later);
 $later: dynamic(#456);
+$palette: dynamic((
+    'primary': #abc,
+    'nested': ('light': #eee, 'dark': #111)
+));
 `)
 	got, changed, reason := normalizeFashionDynamic(source)
 	if reason != "" || !changed {
 		t.Fatalf("normalizeFashionDynamic changed=%t, reason=%q", changed, reason)
 	}
-	if want := "$color: #ddd;\n$spacing: 12px;\n$enabled: true;\n$derived: $color;\n$mixed: mix(#fff, $color, 50%);\n$sum: 1px + 2px;\n$rounded: round(15px * 1.2);\n$implicit-semicolon: #123;\n$later: #456;\n$forward: $later;\n"; string(got) != want {
+	if want := "$color: #ddd;\n$spacing: 12px;\n$enabled: true;\n$derived: $color;\n$mixed: mix(#fff, $color, 50%);\n$sum: 1px + 2px;\n$rounded: round(15px * 1.2);\n$implicit-semicolon: #123;\n$later: #456;\n$forward: $later;\n$palette: (\n    'primary': #abc,\n    'nested': ('light': #eee, 'dark': #111)\n);\n"; string(got) != want {
 		t.Fatalf("normalized Sass = %q, want %q", got, want)
 	}
 	for _, unsupported := range [][]byte{
@@ -155,8 +217,15 @@ func TestDartSassResolvesDynamicAssignmentsInImportedPartial(t *testing.T) {
 	}
 
 	root := makeFixture(t, map[string]string{
-		"app/_theme.scss": `$theme-color: dynamic(#abc)`,
-		"app/Main.scss":   `@import "theme"; .main { color: $theme-color; }`,
+		"app/_theme.scss": `$theme-color: dynamic(#abc);
+$theme-palette: dynamic((
+    'primary': #abc,
+    'secondary': (light: #eee, dark: #111)
+));`,
+		"app/Main.scss": `@import "theme"; .main {
+    color: $theme-color;
+    border-color: map-get($theme-palette, 'primary');
+}`,
 	})
 	css, warnings, err := compileClassSass(root, []string{filepath.Join(root, "app", "Main.scss")}, false)
 	if err != nil {
@@ -165,7 +234,7 @@ func TestDartSassResolvesDynamicAssignmentsInImportedPartial(t *testing.T) {
 	if len(warnings) != 0 {
 		t.Fatalf("Sass warnings = %#v", warnings)
 	}
-	if !strings.Contains(string(css), "color: #abc") {
+	if !strings.Contains(string(css), "color: #abc") || !strings.Contains(string(css), "border-color: #abc") {
 		t.Fatalf("compiled CSS = %s, want imported dynamic variable resolved", css)
 	}
 }

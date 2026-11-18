@@ -831,9 +831,10 @@ func TestBuildExpandsSenchaBuildIDResourcePath(t *testing.T) {
 		"app.json":     `{"name":"Example","namespace":"Example","classpath":["app"],"resources":[{"path":"${build.id}/resources"}],"js":[{"path":"app.js","bundle":true}]}`,
 		"app.js":       `Ext.application({name: 'Example'});`,
 		"app/Empty.js": "",
-		"build/production/Example/resources/generated.txt": "from prior Sencha build",
+		"build/production/Example/resources/generated.txt":                      "from prior Sencha build",
+		"build/production/Example/classic/resources/ux/images/checkerboard.png": "toolkit image",
 	})
-	result, err := Build(root, "out")
+	result, err := BuildWithToolkit(root, "out", "classic")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -843,6 +844,10 @@ func TestBuildExpandsSenchaBuildIDResourcePath(t *testing.T) {
 	}
 	if string(content) != "from prior Sencha build" {
 		t.Fatalf("copied resource = %q, want prior-build content", content)
+	}
+	toolkitImage, err := os.ReadFile(filepath.Join(result.ResourcesPath, "shared", "ux", "images", "checkerboard.png"))
+	if err != nil || string(toolkitImage) != "toolkit image" {
+		t.Fatalf("copied toolkit image = %q, err=%v", toolkitImage, err)
 	}
 }
 

@@ -22,6 +22,7 @@ var sassMixinInclude = regexp.MustCompile(`@include[\t ]+([a-zA-Z_-][a-zA-Z0-9_-
 var sassIncludeVariableReference = regexp.MustCompile(`\$(include-[a-zA-Z0-9_-]+)`)
 var sassFunctionDefinition = regexp.MustCompile(`(?m)^[\t ]*@function[\t ]+([a-zA-Z_-][a-zA-Z0-9_-]*)`)
 var themeBackgroundImageFunctionDefinition = regexp.MustCompile(`(?m)^[\t ]*@function[\t ]+theme-background-image[\t ]*\(`)
+var fashionImageFunctionDefinition = regexp.MustCompile(`(?m)^[\t ]*@function[\t ]+(?:theme-background-image|get-image-url)[\t ]*\(`)
 var themeBackgroundImageCall = regexp.MustCompile(`theme-background-image[\t ]*\(`)
 var themeBackgroundImageLiteralCall = regexp.MustCompile(`theme-background-image\([\t ]*(?:'([^']*)'|"([^"]*)")[\t ]*(?:,[\t ]*(?:'([^']*)'|"([^"]*)"))?(?:,[\t ]*(?:true|false))?[\t ]*\)`)
 var fashionResourcePathAssignment = regexp.MustCompile(`(?m)^[\t ]*\$[a-zA-Z_][a-zA-Z0-9_-]*[\t ]*:[\t ]*get-resource-path[\t ]*\(`)
@@ -336,31 +337,35 @@ func resolveThemeSassHelperSources(appRoot string, roots []string, packageRoots 
 }
 
 func sassSourceIsSassHelper(source []byte) bool {
-	if themeBackgroundImageFunctionDefinition.Match(source) || sassSourceHasNestedMixin(source) || (!sassFunctionDefinition.Match(source) && !sassMixinDefinition.Match(source)) {
+	if sassSourceHasNestedMixin(source) || (!sassFunctionDefinition.Match(source) && !sassMixinDefinition.Match(source)) {
 		return false
 	}
 	definitions := topLevelSassVariableNames(source)
-	depth := 0
-	for _, line := range strings.Split(string(source), "\n") {
+	supported := true
+	walkTopLevelSassLines(source, func(line string) {
+		if !supported {
+			return
+		}
 		trimmed := strings.TrimSpace(line)
-		if depth == 0 && trimmed != "" && !strings.HasPrefix(trimmed, "//") && !strings.HasPrefix(trimmed, "/*") && !strings.HasPrefix(trimmed, "*") {
-			if sassVariableDeclaration.MatchString(line) {
-				for _, match := range sassVariableReference.FindAllSubmatch([]byte(line), -1) {
-					name := string(match[1])
-					if !definitions[name] {
-						return false
+		if trimmed == "" || strings.HasPrefix(trimmed, "//") || strings.HasPrefix(trimmed, "/*") || strings.HasPrefix(trimmed, "*") {
+			return
+		}
+		if sassVariableDeclaration.MatchString(line) {
+			colon := strings.IndexByte(line, ':')
+			if colon >= 0 {
+				for _, match := range sassVariableReference.FindAllSubmatch([]byte(line[colon+1:]), -1) {
+					if !definitions[string(match[1])] {
+						supported = false
+						return
 					}
 				}
-			} else if strings.HasPrefix(trimmed, ".") || strings.HasPrefix(trimmed, "#") {
-				return false
 			}
 		}
-		depth += strings.Count(line, "{") - strings.Count(line, "}")
-		if depth < 0 {
-			depth = 0
+		if strings.HasPrefix(trimmed, ".") || strings.HasPrefix(trimmed, "#") {
+			supported = false
 		}
-	}
-	return true
+	})
+	return supported
 }
 
 func normalizeThemeBackgroundImages(sourcePath string, source []byte) ([]byte, bool, string) {
@@ -411,6 +416,60 @@ func normalizeThemeBackgroundImages(sourcePath string, source []byte) ([]byte, b
 		}
 	}
 	return output, changed, ""
+}
+
+func stripFashionThemeBackgroundImageFunction(source []byte) []byte {
+	for {
+		match := fashionImageFunctionDefinition.FindIndex(source)
+		if match == nil {
+			return source
+		}
+		open := bytes.IndexByte(source[match[1]:], '{')
+		if open < 0 {
+			return source
+		}
+		open += match[1]
+		depth := 0
+		quote := byte(0)
+		escaped := false
+		end := -1
+		for index := open; index < len(source); index++ {
+			current := source[index]
+			if quote != 0 {
+				if escaped {
+					escaped = false
+				} else if current == '\\' {
+					escaped = true
+				} else if current == quote {
+					quote = 0
+				}
+				continue
+			}
+			if current == '\'' || current == '"' {
+				quote = current
+				continue
+			}
+			if current == '{' {
+				depth++
+			} else if current == '}' {
+				depth--
+				if depth == 0 {
+					end = index + 1
+					break
+				}
+			}
+		}
+		if end < 0 {
+			return source
+		}
+		if end < len(source) && source[end] == '\r' {
+			end++
+		}
+		if end < len(source) && source[end] == '\n' {
+			end++
+		}
+		source = append(append([]byte(nil), source[:match[0]]...), source[end:]...)
+	}
 }
 
 func themeBackgroundImageOnlyInMixins(source []byte) bool {
@@ -737,6 +796,10 @@ func topLevelSassVariableReferences(source []byte) []string {
 	var references []string
 	assignment := false
 	walkSassLinesWithDepth(source, func(line string, braceDepth, parenDepth int) {
+		trimmed := strings.TrimSpace(line)
+		if trimmed == "" || strings.HasPrefix(trimmed, "//") || strings.HasPrefix(trimmed, "/*") || strings.HasPrefix(trimmed, "*") || strings.HasPrefix(trimmed, "*/") {
+			return
+		}
 		atTopLevel := braceDepth == 0 && parenDepth == 0
 		declaration := sassVariableDeclaration.FindStringSubmatch(line)
 		if atTopLevel && declaration != nil {
@@ -1078,6 +1141,7 @@ func inlineSassImports(appRoot, importer string, source []byte, availableVariabl
 	active := make(map[string]bool)
 	var expand func(string, []byte) ([]byte, error)
 	expand = func(current string, data []byte) ([]byte, error) {
+		data = stripFashionThemeBackgroundImageFunction(data)
 		data, _, imageReason := normalizeThemeBackgroundImages(current, data)
 		if imageReason != "" {
 			warnings = append(warnings, fmt.Sprintf("skipped Sass source %s: %s", current, imageReason))
@@ -1167,12 +1231,6 @@ func inlineSassImports(appRoot, importer string, source []byte, availableVariabl
 					imported, err := os.ReadFile(resolved)
 					if err != nil {
 						return nil, fmt.Errorf("read Sass import source %s: %w", resolved, err)
-					}
-					if themeBackgroundImageFunctionDefinition.Match(imported) {
-						warnings = append(warnings, fmt.Sprintf("replaced Fashion theme-background-image helper from %s", resolved))
-						dropDirective = true
-						valuePrevious = pathMatch[1]
-						continue
 					}
 					if normalized, changed, reason := normalizeFashionDynamic(imported); reason == "" && changed {
 						imported = normalized
@@ -1583,69 +1641,48 @@ $output-paths: null !default;
 		}
 		return nil, warnings, fmt.Errorf("compile class Sass with %s: %s", binary, detail)
 	}
-	if bytes.Contains(stdout.Bytes(), []byte("dynamic(")) {
+	if start, _ := findFashionDynamicStart(string(stdout.Bytes()), 0); start >= 0 {
 		return nil, warnings, fmt.Errorf("compiled CSS still contains dynamic(); Sencha Fashion is required for this Sass input")
 	}
 	return stdout.Bytes(), warnings, nil
 }
 
 func normalizeFashionDynamic(source []byte) ([]byte, bool, string) {
-	lines := strings.SplitAfter(string(source), "\n")
+	text := string(source)
 	var output strings.Builder
 	changed := false
-	for _, line := range lines {
-		content := strings.TrimSuffix(strings.TrimSuffix(line, "\n"), "\r")
-		lineEnding := line[len(content):]
-		trimmed := strings.TrimSpace(content)
-		if !strings.Contains(content, "dynamic(") || strings.HasPrefix(trimmed, "//") || strings.HasPrefix(trimmed, "/*") || strings.HasPrefix(trimmed, "*") {
-			output.WriteString(line)
-			continue
+	position := 0
+	for position < len(text) {
+		start, expressionStart := findFashionDynamicStart(text, position)
+		if start < 0 {
+			output.WriteString(text[position:])
+			break
 		}
-		match := fashionDynamicAssignment.FindStringIndex(content)
-		if match == nil {
+		lineStart := strings.LastIndex(text[:start], "\n") + 1
+		if !fashionDynamicAssignment.MatchString(text[lineStart:expressionStart]) {
 			return nil, false, "dynamic() is supported only in simple Sass variable assignments"
 		}
-		prefixEnd := strings.LastIndex(content[:match[1]], "dynamic(")
-		if prefixEnd < 0 {
-			return nil, false, "malformed dynamic() Sass variable assignment"
-		}
-		expressionStart := match[1]
-		depth := 1
-		quote := byte(0)
-		escaped := false
-		closeIndex := -1
-		for index := expressionStart; index < len(content); index++ {
-			current := content[index]
-			if quote != 0 {
-				if escaped {
-					escaped = false
-				} else if current == '\\' {
-					escaped = true
-				} else if current == quote {
-					quote = 0
-				}
-				continue
-			}
-			if current == '\'' || current == '"' {
-				quote = current
-				continue
-			}
-			switch current {
-			case '(':
-				depth++
-			case ')':
-				depth--
-				if depth == 0 {
-					closeIndex = index
-					index = len(content)
-				}
-			}
-		}
+		closeIndex := findFashionDynamicEnd(text, expressionStart)
 		if closeIndex < 0 {
 			return nil, false, "unterminated dynamic() Sass variable assignment"
 		}
-		expression := strings.TrimSpace(content[expressionStart:closeIndex])
-		suffix := content[closeIndex+1:]
+		expression := strings.TrimSpace(text[expressionStart:closeIndex])
+		suffixStart := closeIndex + 1
+		lineEnd := strings.IndexByte(text[suffixStart:], '\n')
+		if lineEnd < 0 {
+			lineEnd = len(text)
+		} else {
+			lineEnd += suffixStart
+		}
+		suffix := text[suffixStart:lineEnd]
+		lineEnding := ""
+		if lineEnd < len(text) {
+			lineEnding = "\n"
+			if strings.HasSuffix(suffix, "\r") {
+				suffix = strings.TrimSuffix(suffix, "\r")
+				lineEnding = "\r\n"
+			}
+		}
 		if expression == "" || strings.Contains(expression, "dynamic(") || !fashionDynamicSuffix.MatchString(suffix) {
 			return nil, false, "dynamic() expression is outside the supported Sass variable assignment subset"
 		}
@@ -1656,11 +1693,15 @@ func normalizeFashionDynamic(source []byte) ([]byte, bool, string) {
 				suffix = strings.TrimRight(suffix, "\t ") + ";"
 			}
 		}
-		output.WriteString(content[:prefixEnd])
+		output.WriteString(text[position:start])
 		output.WriteString(expression)
 		output.WriteString(suffix)
 		output.WriteString(lineEnding)
 		changed = true
+		position = lineEnd
+		if lineEnd < len(text) {
+			position++
+		}
 	}
 	normalized := []byte(output.String())
 	if changed {
@@ -1671,54 +1712,169 @@ func normalizeFashionDynamic(source []byte) ([]byte, bool, string) {
 	return normalized, changed, ""
 }
 
+func findFashionDynamicStart(source string, start int) (int, int) {
+	quote := byte(0)
+	escaped := false
+	blockComment := false
+	for index := start; index < len(source); index++ {
+		current := source[index]
+		if blockComment {
+			if current == '*' && index+1 < len(source) && source[index+1] == '/' {
+				blockComment = false
+				index++
+			}
+			continue
+		}
+		if quote != 0 {
+			if escaped {
+				escaped = false
+			} else if current == '\\' {
+				escaped = true
+			} else if current == quote {
+				quote = 0
+			}
+			continue
+		}
+		if current == '/' && index+1 < len(source) {
+			if source[index+1] == '/' {
+				for index < len(source) && source[index] != '\n' {
+					index++
+				}
+				continue
+			}
+			if source[index+1] == '*' {
+				blockComment = true
+				index++
+				continue
+			}
+		}
+		if current == '\'' || current == '"' {
+			quote = current
+			continue
+		}
+		if strings.HasPrefix(source[index:], "dynamic(") {
+			return index, index + len("dynamic(")
+		}
+	}
+	return -1, -1
+}
+
+func findFashionDynamicEnd(source string, start int) int {
+	depth := 1
+	quote := byte(0)
+	escaped := false
+	blockComment := false
+	for index := start; index < len(source); index++ {
+		current := source[index]
+		if blockComment {
+			if current == '*' && index+1 < len(source) && source[index+1] == '/' {
+				blockComment = false
+				index++
+			}
+			continue
+		}
+		if quote != 0 {
+			if escaped {
+				escaped = false
+			} else if current == '\\' {
+				escaped = true
+			} else if current == quote {
+				quote = 0
+			}
+			continue
+		}
+		if current == '/' && index+1 < len(source) {
+			if source[index+1] == '/' {
+				for index < len(source) && source[index] != '\n' {
+					index++
+				}
+				continue
+			}
+			if source[index+1] == '*' {
+				blockComment = true
+				index++
+				continue
+			}
+		}
+		if current == '\'' || current == '"' {
+			quote = current
+			continue
+		}
+		switch current {
+		case '(':
+			depth++
+		case ')':
+			depth--
+			if depth == 0 {
+				return index
+			}
+		}
+	}
+	return -1
+}
+
 func orderSassVariableAssignments(source []byte) ([]byte, bool) {
 	type assignmentBlock struct {
 		content      string
 		name         string
-		references   []string
 		dependencies map[int]bool
 	}
 	lines := strings.SplitAfter(string(source), "\n")
-	var blocks []assignmentBlock
-	var trailing strings.Builder
-	blockStart := 0
-	definitions := make(map[string]int)
-	for index, line := range lines {
-		content := strings.TrimSpace(strings.TrimSuffix(strings.TrimSuffix(line, "\n"), "\r"))
-		if content == "" || strings.HasPrefix(content, "//") || strings.HasPrefix(content, "/*") || strings.HasPrefix(content, "*") || strings.HasPrefix(content, "*/") {
-			continue
+	var declarationIndexes []int
+	lineIndex := 0
+	valid := true
+	walkSassLinesWithDepth(source, func(line string, braceDepth, parenDepth int) {
+		declaration := sassVariableDeclaration.MatchString(line)
+		atTopLevel := braceDepth == 0 && parenDepth == 0
+		trimmed := strings.TrimSpace(line)
+		comment := trimmed == "" || strings.HasPrefix(trimmed, "//") || strings.HasPrefix(trimmed, "/*") || strings.HasPrefix(trimmed, "*") || strings.HasPrefix(trimmed, "*/")
+		if atTopLevel && declaration {
+			declarationIndexes = append(declarationIndexes, lineIndex)
+		} else if atTopLevel && !comment {
+			valid = false
 		}
+		lineIndex++
+	})
+	if !valid || len(declarationIndexes) < 2 {
+		return source, false
+	}
+	starts := make([]int, len(declarationIndexes))
+	for i, declarationIndex := range declarationIndexes {
+		start := declarationIndex
+		for start > 0 {
+			trimmed := strings.TrimSpace(strings.TrimSuffix(strings.TrimSuffix(lines[start-1], "\n"), "\r"))
+			if trimmed != "" && !strings.HasPrefix(trimmed, "//") && !strings.HasPrefix(trimmed, "/*") && !strings.HasPrefix(trimmed, "*") && !strings.HasPrefix(trimmed, "*/") {
+				break
+			}
+			start--
+		}
+		starts[i] = start
+	}
+	prefixEnd := starts[0]
+	prefix := strings.Join(lines[:prefixEnd], "")
+	blocks := make([]assignmentBlock, len(starts))
+	definitions := make(map[string]int)
+	for i, start := range starts {
+		end := len(lines)
+		if i+1 < len(starts) {
+			end = starts[i+1]
+		}
+		declarationIndex := declarationIndexes[i]
+		content := strings.TrimSpace(strings.TrimSuffix(strings.TrimSuffix(lines[declarationIndex], "\n"), "\r"))
 		declaration := sassVariableDeclaration.FindStringSubmatch(content)
 		if declaration == nil {
 			return source, false
 		}
 		name := string(declaration[1])
-		colon := strings.IndexByte(content, ':')
-		if colon < 0 {
-			return source, false
-		}
-		block := assignmentBlock{content: strings.Join(lines[blockStart:index+1], ""), name: name}
-		for _, reference := range sassVariableReference.FindAllSubmatch([]byte(content[colon+1:]), -1) {
-			block.references = append(block.references, string(reference[1]))
-		}
-		blockIndex := len(blocks)
-		blocks = append(blocks, block)
-		definitions[name] = blockIndex
-		blockStart = index + 1
-	}
-	if len(blocks) < 2 {
-		return source, false
+		blocks[i] = assignmentBlock{content: strings.Join(lines[start:end], ""), name: name, dependencies: make(map[int]bool)}
+		definitions[name] = i
 	}
 	for index := range blocks {
-		blocks[index].dependencies = make(map[int]bool)
-		for _, reference := range blocks[index].references {
+		for _, reference := range topLevelSassVariableReferences([]byte(blocks[index].content)) {
 			if dependency, exists := definitions[reference]; exists && dependency != index {
 				blocks[index].dependencies[dependency] = true
 			}
 		}
-	}
-	if blockStart < len(lines) {
-		trailing.WriteString(strings.Join(lines[blockStart:], ""))
 	}
 	ordered := make([]int, 0, len(blocks))
 	added := make(map[int]bool, len(blocks))
@@ -1739,6 +1895,7 @@ func orderSassVariableAssignments(source []byte) ([]byte, bool) {
 				ordered = append(ordered, index)
 				added[index] = true
 				progress = true
+				break
 			}
 		}
 		if !progress {
@@ -1746,6 +1903,7 @@ func orderSassVariableAssignments(source []byte) ([]byte, bool) {
 		}
 	}
 	var output strings.Builder
+	output.WriteString(prefix)
 	changed := false
 	for outputIndex, blockIndex := range ordered {
 		output.WriteString(blocks[blockIndex].content)
@@ -1753,7 +1911,6 @@ func orderSassVariableAssignments(source []byte) ([]byte, bool) {
 			changed = true
 		}
 	}
-	output.WriteString(trailing.String())
 	return []byte(output.String()), changed
 }
 

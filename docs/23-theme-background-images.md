@@ -14,7 +14,7 @@ Class-SCSS-Dateien aus SDK-Packages verwenden `theme-background-image('pfad', 'p
 
 ## Prüfungen
 
-- Fake-SDK-Integrationstest prüft die CSS-URL und das kopierte Bild unter `resources/shared/images`.
+- Fake-SDK-Integrationstest prüft die CSS-URL, Package-Bilder unter `resources/shared/images` und vorhandene Toolkit-Bilder aus `${build.id}` unter `resources/shared/...`.
 - Das `default`-Realprojekt prüft erzeugte UX-Bild-URLs und übernimmt vorhandene Toolkit-Bildressourcen aus dem Sencha-Build.
 - Classic-/Modern-Builds des `default`-Realprojekts, `go test ./...`, `go vet ./...` und `node --check`.
 
