@@ -91,6 +91,44 @@ func TestCompileClassSassProvidesNullSafeBoxRotations(t *testing.T) {
 	}
 }
 
+func TestCompileClassSassPropagatesNullThroughDarkenAssignments(t *testing.T) {
+	binary := os.Getenv("SASS")
+	if binary == "" {
+		binary = "sass"
+	}
+	if _, err := exec.LookPath(binary); err != nil {
+		t.Skip("Dart Sass is not installed")
+	}
+	root := makeFixture(t, map[string]string{
+		"theme/sass/var/Slider.scss": `$slider-track-border-color: dynamic(null);`,
+		"ux/sass/var/Gauge.scss": `$gauge-track-stroke: dynamic($slider-track-border-color);
+$gauge-needle-fill: dynamic(darken($slider-track-border-color, 40%));`,
+		"app/Gauge.scss": `.gauge { width: 5px; stroke: $gauge-track-stroke; fill: $gauge-needle-fill; }`,
+	})
+	sources := []string{
+		filepath.Join(root, "theme", "sass", "var", "Slider.scss"),
+		filepath.Join(root, "ux", "sass", "var", "Gauge.scss"),
+		filepath.Join(root, "app", "Gauge.scss"),
+	}
+	css, _, err := compileClassSass(root, sources, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Contains(css, []byte(".gauge")) || !bytes.Contains(css, []byte("width: 5px")) || bytes.Contains(css, []byte("darken(")) {
+		t.Fatalf("compiled CSS did not propagate Fashion null through darken: %s", css)
+	}
+}
+
+func TestNormalizeFashionNullDarkenAssignments(t *testing.T) {
+	source := []byte(`$slider-track-border-color: null;
+$gauge-needle-fill: darken($slider-track-border-color, 40%);
+`)
+	got, changed := normalizeFashionNullDarkenAssignments(source, map[string]bool{"slider-track-border-color": true})
+	if !changed || !bytes.Contains(got, []byte("$gauge-needle-fill: null;")) {
+		t.Fatalf("normalized null darken assignment changed=%t: %s", changed, got)
+	}
+}
+
 func TestCompileClassSassRecognizesCompassCompatibilityImports(t *testing.T) {
 	binary := os.Getenv("SASS")
 	if binary == "" {
@@ -640,7 +678,7 @@ $toolbar-icon-color: dynamic(adjust-color($base-color, $hue: 0.8deg, $saturation
 
 func TestResolvePackageSassVariablesSkipsExpressionsDependingOnNull(t *testing.T) {
 	root := makeFixture(t, map[string]string{
-		"widget/sass/var/derived.scss": `$lighter-color: dynamic(darken($border-color, 10%));`,
+		"widget/sass/var/derived.scss": `$lighter-color: dynamic(mix($border-color, #fff, 50%));`,
 		"widget/sass/var/alias.scss":   `$border-alias: dynamic($border-color);`,
 		"theme/sass/var/theme.scss":    `$border-color: dynamic(null);`,
 	})

@@ -860,7 +860,11 @@ func resolvePackageSassVariables(appRoot string, roots []string, initialVariable
 			for name, isNull := range nullRotations {
 				candidateNulls[name] = isNull
 			}
-			if name := sassVariableNullReference(source.data, candidateNulls, nullAliases, nullRotations); name != "" {
+			nullDarkens := sassVariableNullDarkenAssignments(source.data, candidateNulls)
+			for name, isNull := range nullDarkens {
+				candidateNulls[name] = isNull
+			}
+			if name := sassVariableNullReference(source.data, candidateNulls, nullAliases, nullRotations, nullDarkens); name != "" {
 				progress = true
 				warnings = append(warnings, fmt.Sprintf("skipped package Sass var source %s: references $%s whose Fashion value is null", source.path, name))
 				continue
@@ -886,6 +890,9 @@ func resolvePackageSassVariables(appRoot string, roots []string, initialVariable
 				nullVariables[name] = isNull
 			}
 			for name, isNull := range nullRotations {
+				nullVariables[name] = isNull
+			}
+			for name, isNull := range nullDarkens {
 				nullVariables[name] = isNull
 			}
 		}
@@ -925,7 +932,7 @@ func sassVariableNullAssignments(source []byte) map[string]bool {
 	return assignments
 }
 
-func sassVariableNullReference(source []byte, nullVariables, nullAliases, nullRotations map[string]bool) string {
+func sassVariableNullReference(source []byte, nullVariables, nullAliases, nullRotations, nullDarkens map[string]bool) string {
 	if normalized, _, reason := normalizeFashionDynamic(source); reason == "" {
 		source = normalized
 	}
@@ -943,7 +950,7 @@ func sassVariableNullReference(source []byte, nullVariables, nullAliases, nullRo
 			return
 		}
 		variable := string(declaration[1])
-		if nullAliases[variable] || nullRotations[variable] {
+		if nullAliases[variable] || nullRotations[variable] || nullDarkens[variable] {
 			return
 		}
 		value := strings.TrimSpace(line[colon+1:])
@@ -989,6 +996,100 @@ func sassVariableNullRotationAssignments(source []byte, nullVariables map[string
 		}
 	})
 	return assignments
+}
+
+func sassVariableNullDarkenAssignments(source []byte, nullVariables map[string]bool) map[string]bool {
+	assignments := make(map[string]bool)
+	if normalized, _, reason := normalizeFashionDynamic(source); reason == "" {
+		source = normalized
+	}
+	walkTopLevelSassLines(source, func(line string) {
+		declaration := sassVariableDeclaration.FindStringSubmatch(line)
+		if declaration == nil {
+			return
+		}
+		colon := strings.IndexByte(line, ':')
+		if colon < 0 {
+			return
+		}
+		value := sassCleanVariableValue(line[colon+1:])
+		arguments, isDarken := sassSimpleFunctionArguments(value, "darken")
+		if !isDarken || len(arguments) != 2 {
+			return
+		}
+		color := strings.TrimSpace(arguments[0])
+		if strings.HasPrefix(color, "$") && nullVariables[strings.TrimPrefix(color, "$")] {
+			assignments[string(declaration[1])] = true
+		}
+	})
+	return assignments
+}
+
+func sassCleanVariableValue(value string) string {
+	if comment := strings.Index(value, "//"); comment >= 0 {
+		value = value[:comment]
+	}
+	value = strings.TrimSpace(value)
+	value = strings.TrimSuffix(value, ";")
+	value = strings.TrimSpace(strings.TrimSuffix(value, "!default"))
+	return strings.TrimSpace(value)
+}
+
+func sassSimpleFunctionArguments(expression, function string) ([]string, bool) {
+	expression = strings.TrimSpace(expression)
+	open := strings.IndexByte(expression, '(')
+	if open <= 0 || !strings.EqualFold(strings.TrimSpace(expression[:open]), function) {
+		return nil, false
+	}
+	close := sassMatchingParen([]byte(expression), open)
+	if close != len(expression)-1 {
+		return nil, false
+	}
+	return splitTopLevelSassArguments(expression[open+1 : close]), true
+}
+
+func normalizeFashionNullDarkenAssignments(source []byte, nullVariables map[string]bool) ([]byte, bool) {
+	lines := strings.SplitAfter(string(source), "\n")
+	changed := false
+	braceDepth := 0
+	parenDepth := 0
+	for index, line := range lines {
+		if braceDepth == 0 && parenDepth == 0 {
+			declaration := sassVariableDeclaration.FindStringSubmatch(line)
+			if declaration != nil {
+				colon := strings.IndexByte(line, ':')
+				if colon >= 0 {
+					value := sassCleanVariableValue(line[colon+1:])
+					arguments, isDarken := sassSimpleFunctionArguments(value, "darken")
+					if isDarken && len(arguments) == 2 {
+						color := strings.TrimSpace(arguments[0])
+						if strings.HasPrefix(color, "$") && nullVariables[strings.TrimPrefix(color, "$")] {
+							suffix := line[colon+1:]
+							if semicolon := strings.IndexByte(suffix, ';'); semicolon >= 0 {
+								suffix = suffix[semicolon:]
+							} else {
+								suffix = ";" + suffix
+							}
+							lines[index] = line[:colon+1] + " null" + suffix
+							changed = true
+						}
+					}
+				}
+			}
+		}
+		braceDepth += strings.Count(line, "{") - strings.Count(line, "}")
+		parenDepth += strings.Count(line, "(") - strings.Count(line, ")")
+		if braceDepth < 0 {
+			braceDepth = 0
+		}
+		if parenDepth < 0 {
+			parenDepth = 0
+		}
+	}
+	if !changed {
+		return source, false
+	}
+	return []byte(strings.Join(lines, "")), true
 }
 
 func sassExpressionHasDirectOrOperand(expression, variable string) bool {
@@ -1706,12 +1807,13 @@ func inspectSassImportTree(appRoot, source string, visited map[string]bool) (boo
 	return false, uniquePaths(imports), nil
 }
 
-func inlineSassImports(appRoot, importer string, source []byte, availableVariables map[string]bool, skipImports, usedFashionJSFunctions map[string]bool) ([]byte, []string, error) {
+func inlineSassImports(appRoot, importer string, source []byte, availableVariables map[string]bool, skipImports, usedFashionJSFunctions, nullVariables map[string]bool) ([]byte, []string, error) {
 	var warnings []string
 	active := make(map[string]bool)
 	var expand func(string, []byte) ([]byte, error)
 	expand = func(current string, data []byte) ([]byte, error) {
 		data = stripFashionThemeBackgroundImageFunction(data)
+		data, _ = normalizeFashionNullDarkenAssignments(data, nullVariables)
 		data, _, _ = normalizeFashionResourcePaths(data)
 		data, _ = normalizeFashionNestedMixins(data)
 		data = normalizeFashionDuplicateMixinArguments(data)
@@ -2238,6 +2340,46 @@ func sassImportCandidates(path string) []string {
 	return candidates
 }
 
+func collectSassNullVariables(sources []string) (map[string]bool, error) {
+	nullVariables := make(map[string]bool)
+	for _, source := range uniquePaths(sources) {
+		data, err := os.ReadFile(source)
+		if err != nil {
+			return nil, fmt.Errorf("read Sass source for null values %s: %w", source, err)
+		}
+		if normalized, _, reason := normalizeFashionDynamic(data); reason == "" {
+			data = normalized
+		}
+		sourceNulls := sassVariableNullAssignments(data)
+		candidateNulls := make(map[string]bool, len(nullVariables)+len(sourceNulls))
+		for name, isNull := range nullVariables {
+			candidateNulls[name] = isNull
+		}
+		for name, isNull := range sourceNulls {
+			candidateNulls[name] = isNull
+		}
+		aliases, _ := sassVariableNullAliases(data, candidateNulls)
+		for name := range topLevelSassVariableNames(data) {
+			if !sourceNulls[name] && !aliases[name] {
+				delete(candidateNulls, name)
+			}
+		}
+		for name := range aliases {
+			candidateNulls[name] = true
+		}
+		rotations := sassVariableNullRotationAssignments(data, candidateNulls)
+		for name := range rotations {
+			candidateNulls[name] = true
+		}
+		darkens := sassVariableNullDarkenAssignments(data, candidateNulls)
+		for name := range darkens {
+			candidateNulls[name] = true
+		}
+		nullVariables = candidateNulls
+	}
+	return nullVariables, nil
+}
+
 func compileClassSass(appRoot string, sources []string, minify bool) ([]byte, []string, error) {
 	return compileClassSassWithInlineImports(appRoot, sources, minify, nil, nil, nil, nil)
 }
@@ -2250,7 +2392,12 @@ func compileClassSassWithInlineImports(appRoot string, sources []string, minify 
 	if err != nil {
 		return nil, nil, err
 	}
-	usedFashionJSFunctions, err := collectFashionJavaScriptFunctionUses(append(append([]string{}, sources...), importedSources...))
+	allSources := append(append([]string{}, sources...), importedSources...)
+	usedFashionJSFunctions, err := collectFashionJavaScriptFunctionUses(allSources)
+	if err != nil {
+		return nil, nil, err
+	}
+	nullVariables, err := collectSassNullVariables(allSources)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -2468,6 +2615,10 @@ $output-paths: null !default;
 			normalized = data
 			dynamicChanged = false
 		}
+		if normalizedDarkens, darkenChanged := normalizeFashionNullDarkenAssignments(normalized, nullVariables); darkenChanged {
+			normalized = normalizedDarkens
+			dynamicChanged = true
+		}
 		if reason := unsupportedFashionSource(normalized); reason != "" {
 			if !inlineImports[source] || !strings.Contains(reason, "dynamic()") {
 				warnings = append(warnings, fmt.Sprintf("skipped Fashion-dependent Sass source %s: %s", source, reason))
@@ -2476,7 +2627,7 @@ $output-paths: null !default;
 		}
 		if dynamicChanged || inlineImports[source] || imageChanged || nestedMixinChanged || resourcePathChanged {
 			var importWarnings []string
-			normalized, importWarnings, err = inlineSassImports(appRoot, source, normalized, availableVariables, skipImports, usedFashionJSFunctions)
+			normalized, importWarnings, err = inlineSassImports(appRoot, source, normalized, availableVariables, skipImports, usedFashionJSFunctions, nullVariables)
 			if err != nil {
 				return nil, warnings, fmt.Errorf("normalize Sass imports in %s: %w", source, err)
 			}

@@ -8,7 +8,7 @@ Modern-Themes definieren optionale Werte als `null` und verwenden sie in direkte
 
 - Direkte Aliase auf zuvor als `null` markierte Theme-Variablen bleiben auch dann erhalten, wenn weitere Variablen in derselben Datei definiert sind.
 - Ein direkter null-valued Operand in einer Sass-`or`-Fallback-Zuweisung wird als sicher behandelt; Dart Sass wertet den Ausdruck aus.
-- Andere Berechnungen mit null-valued Variablen, etwa `darken($null-color, 10%)`, bleiben weiterhin gewarnt und ausgelassen.
+- Andere Berechnungen mit null-valued Variablen bleiben weiterhin gewarnt und ausgelassen, sofern sie nicht durch einen späteren gezielten Kompatibilitätsschritt abgedeckt sind.
 
 ## Prüfungen
 
@@ -17,4 +17,4 @@ Modern-Themes definieren optionale Werte als `null` und verwenden sie in direkte
 
 ## Grenzen
 
-Null-Semantik wird nur für direkte Aliase und direkte `or`-Operanden berücksichtigt. Verschachtelte Funktionen und beliebige Fashion-Ausdrücke mit `null` werden nicht nachgebildet.
+Null-Semantik wird nur für direkte Aliase und direkte `or`-Operanden berücksichtigt. Weitere spezifische Fälle sind in separaten Schritten dokumentiert.

@@ -56,6 +56,7 @@ Die Implementierung startet mit einem kleinen, durch Tests abgesicherten vertika
 38. **Fashion-Box-Rotationen** (`docs/38-fashion-box-rotationen.md`): null-sichere `rotate90`/`rotate180`/`rotate270`-Sass-Funktionen und ihre Variablenabhängigkeiten unterstützen.
 39. **Modern-Icon-Sass-Shim** (`docs/39-modern-icon-sass-shim.md`): `icon.js` als bekannten Import behandeln, wenn dessen `parseIconArgs`-Funktion vom Sass-Prelude bereitgestellt wird.
 40. **Verschachtelte Fashion-Dynamic-Werte** (`docs/40-verschachtelte-dynamic-werte.md`): innere `dynamic()`-Wrapper in unterstützten Sass-Variablenwerten wie Maps rekursiv normalisieren.
+41. **Null-Propagation für `darken()`** (`docs/41-null-propagation-darken.md`): direkte `darken()`-Zuweisungen auf bekannte `null`-Farben als `null` weitergeben.
 
 ## Architekturleitplanken
 
