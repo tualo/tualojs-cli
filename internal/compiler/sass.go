@@ -1575,14 +1575,18 @@ func inlineSassImports(appRoot, importer string, source []byte, availableVariabl
 			prefix := text[previous:match[0]]
 			output.WriteString(prefix)
 			braceDepth += strings.Count(prefix, "{") - strings.Count(prefix, "}")
-			if braceDepth > 0 {
-				warnings = append(warnings, fmt.Sprintf("skipped Sass import nested in a block in %s", current))
-				previous = match[1]
-				continue
-			}
 			directive := text[match[0]:match[1]]
 			kind := text[match[2]:match[3]]
 			value := text[match[4]:match[5]]
+			if braceDepth > 0 {
+				if kind == "import" && strings.Contains(value, "url(") {
+					output.WriteString(directive)
+				} else {
+					warnings = append(warnings, fmt.Sprintf("skipped Sass import nested in a block in %s", current))
+				}
+				previous = match[1]
+				continue
+			}
 			if strings.Contains(value, "url(") {
 				output.WriteString(directive)
 				previous = match[1]

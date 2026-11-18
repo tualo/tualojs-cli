@@ -86,6 +86,35 @@ func TestCompileClassSassRecognizesCompassCompatibilityImports(t *testing.T) {
 	}
 }
 
+func TestCompileClassSassPreservesNestedCSSURLImports(t *testing.T) {
+	binary := os.Getenv("SASS")
+	if binary == "" {
+		binary = "sass"
+	}
+	if _, err := exec.LookPath(binary); err != nil {
+		t.Skip("Dart Sass is not installed")
+	}
+	root := t.TempDir()
+	source := filepath.Join(root, "Main.scss")
+	if err := os.WriteFile(source, []byte(`@mixin google-font {
+    @import url('https://fonts.example.test/css?family=Exo');
+}
+@include google-font;
+`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	css, warnings, err := compileClassSassWithInlineImports(root, []string{source}, false, map[string]bool{source: true}, nil, nil, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(warnings) != 0 {
+		t.Fatalf("Sass warnings = %#v, want nested CSS URL import preserved", warnings)
+	}
+	if !bytes.Contains(css, []byte(`@import url("https://fonts.example.test/css?family=Exo")`)) {
+		t.Fatalf("compiled CSS lost nested import = %s", css)
+	}
+}
+
 func TestPackageSassSrcIncludesExplicitEntryFiles(t *testing.T) {
 	binary := os.Getenv("SASS")
 	if binary == "" {
