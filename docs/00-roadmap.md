@@ -54,6 +54,7 @@ Die Implementierung startet mit einem kleinen, durch Tests abgesicherten vertika
 36. **Unbenutzte Fashion-JavaScript-Imports** (`docs/36-unbenutzte-fashion-js-imports.md`): `functions.js` ohne Warnung auslassen, wenn die registrierten Funktionen im geladenen Sass nicht verwendet werden.
 37. **Null-Or-Fallback in Sass-Variablen** (`docs/37-null-or-fallback-sass-variablen.md`): sichere Aliase und `or`-Fallbacks bei `null` pro Variablenzuweisung erhalten.
 38. **Fashion-Box-Rotationen** (`docs/38-fashion-box-rotationen.md`): null-sichere `rotate90`/`rotate180`/`rotate270`-Sass-Funktionen und ihre Variablenabhängigkeiten unterstützen.
+39. **Modern-Icon-Sass-Shim** (`docs/39-modern-icon-sass-shim.md`): `icon.js` als bekannten Import behandeln, wenn dessen `parseIconArgs`-Funktion vom Sass-Prelude bereitgestellt wird.
 
 ## Architekturleitplanken
 

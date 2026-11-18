@@ -161,10 +161,14 @@ func TestCompileClassSassUsesKnownFashionJavaScriptShims(t *testing.T) {
 	source := filepath.Join(root, "Main.scss")
 	if err := os.WriteFile(source, []byte(`@import "theme/mixins/font-icon.js";
 @import "ext/sass/etc/extensions.js";
+@import "modern/theme-base/mixins/icon.js";
 @import "core/functions.js";
 $icon-args: parseFontIconArgs('A' 16px);
+$simple-icon-args: parseIconArgs('B' FontAwesome 90);
 .icon {
     font-size: nth($icon-args, 2);
+    font-family: nth($simple-icon-args, 2);
+    transform: rotate(#{nth($simple-icon-args, 3)}deg);
     background-image: url(file_join("assets", "fonts/icon.woff"));
 }
 `), 0o644); err != nil {
@@ -177,7 +181,7 @@ $icon-args: parseFontIconArgs('A' 16px);
 	if len(warnings) != 0 {
 		t.Fatalf("Fashion Sass shim warnings = %#v, want none", warnings)
 	}
-	if !bytes.Contains(css, []byte("font-size: 16px")) || !bytes.Contains(css, []byte(`url("assets/fonts/icon.woff")`)) {
+	if !bytes.Contains(css, []byte("font-size: 16px")) || !bytes.Contains(css, []byte("font-family: FontAwesome")) || !bytes.Contains(css, []byte("transform: rotate(90deg)")) || !bytes.Contains(css, []byte(`url("assets/fonts/icon.woff")`)) {
 		t.Fatalf("compiled Fashion shim CSS = %s", css)
 	}
 }

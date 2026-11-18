@@ -1634,7 +1634,7 @@ func isSassCompassCompatibilityImport(importPath string) bool {
 func isFashionJavaScriptImportShim(importPath string, usedFunctions map[string]bool) bool {
 	base := strings.ToLower(filepath.Base(filepath.ToSlash(strings.TrimSpace(importPath))))
 	switch base {
-	case "font-icon.js", "extensions.js":
+	case "font-icon.js", "extensions.js", "icon.js":
 		return true
 	case "functions.js":
 		return !usedFunctions["map_merge"] && !usedFunctions["intersect_arguments"]
