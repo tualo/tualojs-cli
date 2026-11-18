@@ -21,6 +21,9 @@ var sassMixinDefinition = regexp.MustCompile(`(?m)^[\t ]*@mixin[\t ]+([a-zA-Z_-]
 var sassMixinInclude = regexp.MustCompile(`@include[\t ]+([a-zA-Z_-][a-zA-Z0-9_-]*)`)
 var sassIncludeVariableReference = regexp.MustCompile(`\$(include-[a-zA-Z0-9_-]+)`)
 var sassFunctionDefinition = regexp.MustCompile(`(?m)^[\t ]*@function[\t ]+([a-zA-Z_-][a-zA-Z0-9_-]*)`)
+var themeBackgroundImageFunctionDefinition = regexp.MustCompile(`(?m)^[\t ]*@function[\t ]+theme-background-image[\t ]*\(`)
+var themeBackgroundImageCall = regexp.MustCompile(`theme-background-image[\t ]*\(`)
+var themeBackgroundImageLiteralCall = regexp.MustCompile(`theme-background-image\([\t ]*(?:'([^']*)'|"([^"]*)")[\t ]*(?:,[\t ]*(?:'([^']*)'|"([^"]*)"))?(?:,[\t ]*(?:true|false))?[\t ]*\)`)
 var fashionResourcePathAssignment = regexp.MustCompile(`(?m)^[\t ]*\$[a-zA-Z_][a-zA-Z0-9_-]*[\t ]*:[\t ]*get-resource-path[\t ]*\(`)
 var fashionBoxFunctionArgs = regexp.MustCompile(`(?m)(@function[\t ]+(?:top|right|bottom|left|vertical|horizontal|boxmax|boxmin)[\t ]*\([\t ]*\$box[\t ]*,[\t ]*\$fallbackBox)([\t ]*\))`)
 var fashionDynamicAssignment = regexp.MustCompile(`^[\t ]*\$[a-zA-Z_][a-zA-Z0-9_-]*[\t ]*:[\t ]*dynamic\(`)
@@ -333,7 +336,7 @@ func resolveThemeSassHelperSources(appRoot string, roots []string, packageRoots 
 }
 
 func sassSourceIsSassHelper(source []byte) bool {
-	if sassSourceHasNestedMixin(source) || (!sassFunctionDefinition.Match(source) && !sassMixinDefinition.Match(source)) {
+	if themeBackgroundImageFunctionDefinition.Match(source) || sassSourceHasNestedMixin(source) || (!sassFunctionDefinition.Match(source) && !sassMixinDefinition.Match(source)) {
 		return false
 	}
 	definitions := topLevelSassVariableNames(source)
@@ -351,6 +354,73 @@ func sassSourceIsSassHelper(source []byte) bool {
 			} else if strings.HasPrefix(trimmed, ".") || strings.HasPrefix(trimmed, "#") {
 				return false
 			}
+		}
+		depth += strings.Count(line, "{") - strings.Count(line, "}")
+		if depth < 0 {
+			depth = 0
+		}
+	}
+	return true
+}
+
+func normalizeThemeBackgroundImages(sourcePath string, source []byte) ([]byte, bool, string) {
+	if themeBackgroundImageFunctionDefinition.Match(source) {
+		return source, false, ""
+	}
+	if !themeBackgroundImageCall.Match(source) {
+		return source, false, ""
+	}
+	changed := false
+	unsupported := false
+	output := themeBackgroundImageLiteralCall.ReplaceAllFunc(source, func(call []byte) []byte {
+		match := themeBackgroundImageLiteralCall.FindSubmatch(call)
+		if match == nil {
+			unsupported = true
+			return call
+		}
+		path := string(match[1])
+		if path == "" {
+			path = string(match[2])
+		}
+		extension := string(match[3])
+		if extension == "" {
+			extension = string(match[4])
+		}
+		path = filepath.ToSlash(filepath.Clean(filepath.FromSlash(path)))
+		path = strings.TrimPrefix(path, "images/")
+		if extension == "" && filepath.Ext(path) == "" {
+			extension = "png"
+		}
+		if extension != "" && filepath.Ext(path) == "" {
+			path += "." + extension
+		}
+		if path == "" || filepath.IsAbs(filepath.FromSlash(path)) || path == ".." || strings.HasPrefix(path, "../") {
+			unsupported = true
+			return call
+		}
+		resourcePrefix := "../../shared/images/"
+		if strings.Contains(filepath.ToSlash(sourcePath), "/packages/ux/") {
+			resourcePrefix = "../../shared/ux/images/"
+		}
+		changed = true
+		return []byte(`url("` + resourcePrefix + path + `")`)
+	})
+	if unsupported || themeBackgroundImageCall.Match(output) {
+		if !themeBackgroundImageOnlyInMixins(source) {
+			return nil, false, "theme-background-image requires static package image paths outside Sass mixins"
+		}
+	}
+	return output, changed, ""
+}
+
+func themeBackgroundImageOnlyInMixins(source []byte) bool {
+	if !sassMixinDefinition.Match(source) {
+		return false
+	}
+	depth := 0
+	for _, line := range strings.Split(string(source), "\n") {
+		if strings.Contains(line, "theme-background-image(") && depth == 0 {
+			return false
 		}
 		depth += strings.Count(line, "{") - strings.Count(line, "}")
 		if depth < 0 {
@@ -1008,6 +1078,11 @@ func inlineSassImports(appRoot, importer string, source []byte, availableVariabl
 	active := make(map[string]bool)
 	var expand func(string, []byte) ([]byte, error)
 	expand = func(current string, data []byte) ([]byte, error) {
+		data, _, imageReason := normalizeThemeBackgroundImages(current, data)
+		if imageReason != "" {
+			warnings = append(warnings, fmt.Sprintf("skipped Sass source %s: %s", current, imageReason))
+			return nil, nil
+		}
 		data = normalizeFashionBoxFunctionDefaults(data)
 		text := string(data)
 		matches := sassImportDirective.FindAllStringSubmatchIndex(text, -1)
@@ -1092,6 +1167,12 @@ func inlineSassImports(appRoot, importer string, source []byte, availableVariabl
 					imported, err := os.ReadFile(resolved)
 					if err != nil {
 						return nil, fmt.Errorf("read Sass import source %s: %w", resolved, err)
+					}
+					if themeBackgroundImageFunctionDefinition.Match(imported) {
+						warnings = append(warnings, fmt.Sprintf("replaced Fashion theme-background-image helper from %s", resolved))
+						dropDirective = true
+						valuePrevious = pathMatch[1]
+						continue
 					}
 					if normalized, changed, reason := normalizeFashionDynamic(imported); reason == "" && changed {
 						imported = normalized
@@ -1326,6 +1407,10 @@ $output-paths: null !default;
     @return $result;
 }
 @function theme_image_exists($search-path, $path) { @return false; }
+@function theme-background-image($path, $extension: $image-extension, $nocheck: false) {
+    @if $extension != null and $extension != "" { $path: $path + "." + $extension; }
+    @return url(file_join("../../shared/images", $path));
+}
 @function parseIconArgs($glyph) {
     $character: nth($glyph, 1);
     $font-family: null;
@@ -1410,6 +1495,12 @@ $output-paths: null !default;
 		if err != nil {
 			return nil, warnings, fmt.Errorf("read Sass source %s: %w", source, err)
 		}
+		normalizedImages, imageChanged, imageReason := normalizeThemeBackgroundImages(source, data)
+		if imageReason != "" {
+			warnings = append(warnings, fmt.Sprintf("skipped Fashion-dependent Sass source %s: %s", source, imageReason))
+			continue
+		}
+		data = normalizedImages
 		data = normalizeFashionBoxFunctionDefaults(data)
 		if sassSourceHasNestedMixin(data) {
 			warnings = append(warnings, fmt.Sprintf("skipped Fashion-dependent Sass source %s: nested Sass mixins are unsupported", source))
@@ -1430,7 +1521,7 @@ $output-paths: null !default;
 				continue
 			}
 		}
-		if dynamicChanged || inlineImports[source] {
+		if dynamicChanged || inlineImports[source] || imageChanged {
 			var importWarnings []string
 			normalized, importWarnings, err = inlineSassImports(appRoot, source, normalized, availableVariables, skipImports)
 			if err != nil {
@@ -1655,25 +1746,5 @@ func unsupportedFashionSource(source []byte) string {
 	if fashionResourcePathAssignment.Match(source) {
 		return "get-resource-path requires Sencha Fashion resource context"
 	}
-	if bytes.Contains(source, []byte("theme-background-image(")) && !themeBackgroundImageOnlyInMixins(source) && !bytes.Contains(source, []byte("@function theme-background-image(")) {
-		return "theme-background-image requires Sencha Fashion resource context"
-	}
 	return ""
-}
-
-func themeBackgroundImageOnlyInMixins(source []byte) bool {
-	if !sassMixinDefinition.Match(source) {
-		return false
-	}
-	depth := 0
-	for _, line := range strings.Split(string(source), "\n") {
-		if strings.Contains(line, "theme-background-image(") && depth == 0 {
-			return false
-		}
-		depth += strings.Count(line, "{") - strings.Count(line, "}")
-		if depth < 0 {
-			depth = 0
-		}
-	}
-	return true
 }

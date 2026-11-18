@@ -38,6 +38,7 @@ Die Implementierung startet mit einem kleinen, durch Tests abgesicherten vertika
 20. **Theme-Sass-Imports** (`docs/20-theme-sass-imports.md`): Theme-`sass.etc`-Einstiege und ihre unterstützten Imports nach den Package-Variablen verarbeiten.
 21. **Theme-Function-Kontext** (`docs/21-theme-function-context.md`): Theme-Funktionen vor Sass-Variablen verfügbar machen und Fashion-Kompatibilitätsfälle für importierte Theme-Quellen absichern.
 22. **SDK-Root-Sass-Kontext** (`docs/22-sdk-root-sass.md`): `sass.etc`, `sass.var` und `sass.src` aus dem Ext-SDK-Root-Manifest in die Compiler-Pipeline einbeziehen.
+23. **Theme-Bildpfade** (`docs/23-theme-background-images.md`): einfache `theme-background-image()`-Aufrufe auf kopierte Package-Bilder unter `resources/shared` abbilden.
 
 ## Architekturleitplanken
 

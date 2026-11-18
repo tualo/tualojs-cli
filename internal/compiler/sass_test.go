@@ -217,7 +217,7 @@ func TestBuildLoadsPackageSassEtcAndLocalImports(t *testing.T) {
 		"sdk/package.json":                       `{"name":"ext","version":"8.0.0.43","compatVersion":"8.0.0","sass":{"etc":"${package.dir}/sass/etc/all.scss"}}`,
 		"sdk/packages/core/package.json":         `{"version":"8.0.0.43","sencha":{"name":"core","classpath":"${package.dir}/src","sass":{"etc":"${package.dir}/sass/etc/all.scss"}}}`,
 		"sdk/packages/widget-lib/package.json":   `{"version":"1.0.0","sencha":{"name":"widget-lib","requires":["core"],"classpath":"${package.dir}/src","sass":{"src":"${package.dir}/sass/src"}}}`,
-		"sdk/packages/theme-custom/package.json": `{"version":"1.0.0","sencha":{"name":"theme-custom","type":"theme","extend":"core","classpath":"${package.dir}/src","sass":{"etc":"${package.dir}/sass/etc/all.scss","var":"${package.dir}/sass/var"}}}`,
+		"sdk/packages/theme-custom/package.json": `{"version":"1.0.0","sencha":{"name":"theme-custom","type":"theme","extend":"core","classpath":"${package.dir}/src","sass":{"etc":"${package.dir}/sass/etc/all.scss","var":"${package.dir}/sass/var"},"resources":[{"path":"${package.dir}/resources","output":"shared"}]}}`,
 		"sdk/classic/classic/package.json":       `{"version":"8.0.0.43","sencha":{"name":"classic","requires":["core"],"classpath":"${package.dir}/src"}}`,
 		"sdk/sass/etc/all.scss":                  "$sdk-prefix: dynamic('sdk-');\n@import \"globals\";\n",
 		"sdk/sass/etc/_globals.scss":             "$sdk-global-color: #789;",
@@ -228,8 +228,9 @@ func TestBuildLoadsPackageSassEtcAndLocalImports(t *testing.T) {
 		"sdk/packages/theme-custom/sass/etc/_theme.scss": `@mixin theme-package-mixin { border-color: $theme-color; }`,
 		"sdk/packages/theme-custom/sass/var/Button.scss": `$button-radius: 3px;
 @mixin extjs-button-small-ui($ui) { .#{$prefix}btn-#{$ui} { border-radius: $button-radius; } }`,
-		"sdk/packages/widget-lib/src/Widget.js":        `Ext.define('Lib.Widget', {});`,
-		"sdk/packages/widget-lib/sass/src/Widget.scss": `.#{$prefix}widget { @include unused-package-mixin; @include theme-package-mixin; @include extjs-button-small-ui('test'); color: #246; background-color: $shared-color; outline-color: $sdk-global-color; }`,
+		"sdk/packages/theme-custom/resources/images/theme-icon.png": "theme image",
+		"sdk/packages/widget-lib/src/Widget.js":                     `Ext.define('Lib.Widget', {});`,
+		"sdk/packages/widget-lib/sass/src/Widget.scss":              `.#{$prefix}widget { @include unused-package-mixin; @include theme-package-mixin; @include extjs-button-small-ui('test'); color: #246; background-color: $shared-color; outline-color: $sdk-global-color; background-image: theme-background-image('images/theme-icon', 'png'); }`,
 		"app.js":       `Ext.application({name: 'Example'}); Ext.require('Lib.Widget');`,
 		"app/Empty.js": "",
 	})
@@ -245,8 +246,13 @@ func TestBuildLoadsPackageSassEtcAndLocalImports(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(string(css), ".x-widget") || !strings.Contains(string(css), ".x-btn-test") || !strings.Contains(string(css), "border-radius: 3px") || !strings.Contains(string(css), "color: red") || !strings.Contains(string(css), "border-color: #abc") || !strings.Contains(string(css), "color: #246") || !strings.Contains(string(css), "background-color: #789") || !strings.Contains(string(css), "outline-color: #789") {
+	if !strings.Contains(string(css), ".x-widget") || !strings.Contains(string(css), ".x-btn-test") || !strings.Contains(string(css), "border-radius: 3px") || !strings.Contains(string(css), "color: red") || !strings.Contains(string(css), "border-color: #abc") || !strings.Contains(string(css), "color: #246") || !strings.Contains(string(css), "background-color: #789") || !strings.Contains(string(css), "outline-color: #789") || !strings.Contains(string(css), "../../shared/images/theme-icon.png") {
 		t.Fatalf("compiled package Sass = %s", css)
+	}
+	imagePath := filepath.Join(root, "out", "resources", "shared", "images", "theme-icon.png")
+	image, err := os.ReadFile(imagePath)
+	if err != nil || string(image) != "theme image" {
+		t.Fatalf("copied theme image = %q, err=%v", image, err)
 	}
 	for _, path := range []string{
 		filepath.Join(root, "sdk", "sass", "etc", "all.scss"),

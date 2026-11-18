@@ -255,6 +255,17 @@ func resolveResources(appRoot, appName, mode string, entries resourceList, toolk
 		}
 		resources = append(resources, resolvedResource{source: source, output: output})
 		watchPaths = append(watchPaths, source)
+		if toolkit != "" && strings.Contains(entry.Path, "${build.id}") {
+			toolkitResources := filepath.Join(appRoot, filepath.FromSlash(buildID), toolkit, "resources")
+			if toolkitInfo, statErr := os.Stat(toolkitResources); statErr == nil && toolkitInfo.IsDir() {
+				if !isIgnoredProjectPath(appRoot, toolkitResources, ignore) {
+					resources = append(resources, resolvedResource{source: toolkitResources, output: "shared"})
+					watchPaths = append(watchPaths, toolkitResources)
+				}
+			} else if statErr != nil && !os.IsNotExist(statErr) {
+				return nil, nil, fmt.Errorf("inspect toolkit build resources %s: %w", toolkitResources, statErr)
+			}
+		}
 	}
 	return resources, uniquePaths(watchPaths), nil
 }
