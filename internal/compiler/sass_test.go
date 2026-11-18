@@ -66,8 +66,10 @@ func TestPackageSassSrcIncludesExplicitEntryFiles(t *testing.T) {
 		t.Skip("Dart Sass is not installed")
 	}
 	root := makeFixture(t, map[string]string{
-		"pkg/package.json":          "{}",
-		"pkg/sass/src/all.scss":     `@import "../etc/colors"; .package-entry { color: $package-color; }`,
+		"pkg/package.json": "{}",
+		"pkg/sass/src/all.scss": `$font-path: get-resource-path('fonts', 'shared');
+@import "../etc/colors";
+.package-entry { color: $package-color; src: url('#{$font-path}/sample.woff?v1#icon'); }`,
 		"pkg/sass/etc/_colors.scss": `$package-color: #246;`,
 		"pkg/sass/src/Unused.scss":  `.unused { color: red; }`,
 	})
@@ -102,8 +104,28 @@ func TestPackageSassSrcIncludesExplicitEntryFiles(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !bytes.Contains(css, []byte(".package-entry")) || !bytes.Contains(css, []byte("color: #246")) {
+	if !bytes.Contains(css, []byte(".package-entry")) || !bytes.Contains(css, []byte("color: #246")) || !bytes.Contains(css, []byte("../../shared/fonts/sample.woff?v1#icon")) {
 		t.Fatalf("compiled package Sass entry = %s", css)
+	}
+}
+
+func TestNormalizeFashionResourcePaths(t *testing.T) {
+	source := []byte(`$font-path: get-resource-path('fonts');
+$shared-path: get-resource-path("icons", "shared");
+$package-path: get-resource-path('fonts', $packageName: 'ext');
+`)
+	got, changed, reason := normalizeFashionResourcePaths(source)
+	if reason != "" || !changed {
+		t.Fatalf("normalizeFashionResourcePaths changed=%t, reason=%q", changed, reason)
+	}
+	for _, want := range []string{
+		`$font-path: "../../shared/fonts";`,
+		`$shared-path: "../../shared/icons";`,
+		`$package-path: get-resource-path('fonts', $packageName: 'ext');`,
+	} {
+		if !strings.Contains(string(got), want) {
+			t.Errorf("normalized resource paths missing %q: %s", want, got)
+		}
 	}
 }
 

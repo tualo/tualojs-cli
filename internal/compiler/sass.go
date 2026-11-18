@@ -535,6 +535,141 @@ func normalizeFashionBoxFunctionDefaults(source []byte) []byte {
 	return fashionBoxFunctionArgs.ReplaceAll(source, []byte("${1}: null${2}"))
 }
 
+func normalizeFashionResourcePaths(source []byte) ([]byte, bool, string) {
+	text := string(source)
+	var output strings.Builder
+	changed := false
+	position := 0
+	for position < len(text) {
+		relativeStart := strings.Index(text[position:], "get-resource-path")
+		if relativeStart < 0 {
+			output.WriteString(text[position:])
+			break
+		}
+		start := position + relativeStart
+		nameEnd := start + len("get-resource-path")
+		if nameEnd < len(text) && (text[nameEnd] == '-' || text[nameEnd] == '_' || text[nameEnd] >= 'a' && text[nameEnd] <= 'z' || text[nameEnd] >= 'A' && text[nameEnd] <= 'Z' || text[nameEnd] >= '0' && text[nameEnd] <= '9') {
+			output.WriteString(text[position:nameEnd])
+			position = nameEnd
+			continue
+		}
+		cursor := nameEnd
+		for cursor < len(text) && (text[cursor] == ' ' || text[cursor] == '\t' || text[cursor] == '\n' || text[cursor] == '\r') {
+			cursor++
+		}
+		if cursor >= len(text) || text[cursor] != '(' {
+			output.WriteString(text[position:nameEnd])
+			position = nameEnd
+			continue
+		}
+		lineStart := strings.LastIndex(text[:start], "\n") + 1
+		if strings.HasPrefix(strings.TrimSpace(text[lineStart:start]), "@function ") {
+			output.WriteString(text[position:nameEnd])
+			position = nameEnd
+			continue
+		}
+		close := sassMatchingParen([]byte(text), cursor)
+		if close < 0 {
+			return nil, false, "unterminated get-resource-path() Sass call"
+		}
+		arguments := splitTopLevelSassArguments(text[cursor+1 : close])
+		if len(arguments) < 1 || len(arguments) > 2 {
+			output.WriteString(text[position : close+1])
+			position = close + 1
+			continue
+		}
+		resourcePath, ok := sassStringLiteral(arguments[0])
+		if !ok {
+			output.WriteString(text[position : close+1])
+			position = close + 1
+			continue
+		}
+		if len(arguments) == 2 {
+			pool, literal := sassStringLiteral(arguments[1])
+			if !literal || (pool != "path" && pool != "shared") {
+				output.WriteString(text[position : close+1])
+				position = close + 1
+				continue
+			}
+		}
+		cleanPath := filepath.Clean(filepath.FromSlash(resourcePath))
+		if resourcePath == "" || filepath.IsAbs(cleanPath) || cleanPath == ".." || strings.HasPrefix(cleanPath, ".."+string(filepath.Separator)) {
+			output.WriteString(text[position : close+1])
+			position = close + 1
+			continue
+		}
+		relativePath := filepath.ToSlash(filepath.Join("..", "..", "shared", cleanPath))
+		output.WriteString(text[position:start])
+		output.WriteString(strconv.Quote(relativePath))
+		position = close + 1
+		changed = true
+	}
+	if !changed {
+		return source, false, ""
+	}
+	return []byte(output.String()), true, ""
+}
+
+func splitTopLevelSassArguments(arguments string) []string {
+	var values []string
+	start := 0
+	parenDepth, bracketDepth, braceDepth := 0, 0, 0
+	quote := byte(0)
+	escaped := false
+	for index := 0; index < len(arguments); index++ {
+		current := arguments[index]
+		if quote != 0 {
+			if escaped {
+				escaped = false
+			} else if current == '\\' {
+				escaped = true
+			} else if current == quote {
+				quote = 0
+			}
+			continue
+		}
+		if current == '\'' || current == '"' {
+			quote = current
+			continue
+		}
+		switch current {
+		case '(':
+			parenDepth++
+		case ')':
+			parenDepth--
+		case '[':
+			bracketDepth++
+		case ']':
+			bracketDepth--
+		case '{':
+			braceDepth++
+		case '}':
+			braceDepth--
+		case ',':
+			if parenDepth == 0 && bracketDepth == 0 && braceDepth == 0 {
+				values = append(values, strings.TrimSpace(arguments[start:index]))
+				start = index + 1
+			}
+		}
+	}
+	if strings.TrimSpace(arguments[start:]) != "" {
+		values = append(values, strings.TrimSpace(arguments[start:]))
+	}
+	return values
+}
+
+func sassStringLiteral(value string) (string, bool) {
+	value = strings.TrimSpace(value)
+	if len(value) < 2 || (value[0] != '\'' && value[0] != '"') || value[len(value)-1] != value[0] {
+		return "", false
+	}
+	content := value[1 : len(value)-1]
+	if strings.ContainsRune(content, '\\') || strings.ContainsRune(content, rune(value[0])) {
+		return "", false
+	}
+	return content, true
+}
+
 func normalizeFashionButtonColorFunctionDefaults(source []byte) []byte {
 	return fashionButtonColorFunctionArgs.ReplaceAll(source, []byte("${1}${2}: null${3}"))
 }
@@ -1319,6 +1454,7 @@ func inlineSassImports(appRoot, importer string, source []byte, availableVariabl
 	var expand func(string, []byte) ([]byte, error)
 	expand = func(current string, data []byte) ([]byte, error) {
 		data = stripFashionThemeBackgroundImageFunction(data)
+		data, _, _ = normalizeFashionResourcePaths(data)
 		data, _ = normalizeFashionNestedMixins(data)
 		data = normalizeFashionDuplicateMixinArguments(data)
 		data = normalizeFashionScopedFunctions(data)
@@ -2012,6 +2148,11 @@ $output-paths: null !default;
 			continue
 		}
 		data = normalizedImages
+		data, resourcePathChanged, resourcePathReason := normalizeFashionResourcePaths(data)
+		if resourcePathReason != "" {
+			warnings = append(warnings, fmt.Sprintf("skipped Fashion-dependent Sass source %s: %s", source, resourcePathReason))
+			continue
+		}
 		data, nestedMixinChanged := normalizeFashionNestedMixins(data)
 		data = normalizeFashionBoxFunctionDefaults(data)
 		if sassSourceHasNestedMixin(data) {
@@ -2033,7 +2174,7 @@ $output-paths: null !default;
 				continue
 			}
 		}
-		if dynamicChanged || inlineImports[source] || imageChanged || nestedMixinChanged {
+		if dynamicChanged || inlineImports[source] || imageChanged || nestedMixinChanged || resourcePathChanged {
 			var importWarnings []string
 			normalized, importWarnings, err = inlineSassImports(appRoot, source, normalized, availableVariables, skipImports)
 			if err != nil {
@@ -2354,7 +2495,11 @@ func unsupportedFashionSource(source []byte) string {
 	if _, _, reason := normalizeFashionDynamic(source); reason != "" {
 		return reason
 	}
-	if fashionResourcePathAssignment.Match(source) {
+	normalized, _, reason := normalizeFashionResourcePaths(source)
+	if reason != "" {
+		return reason
+	}
+	if fashionResourcePathAssignment.Match(normalized) {
 		return "get-resource-path requires Sencha Fashion resource context"
 	}
 	return ""
