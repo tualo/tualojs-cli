@@ -195,12 +195,24 @@ func BuildWithTargetOptions(appDir, outputDir, selectedToolkit, selectedPlatform
 	if err != nil {
 		return BuildResult{}, err
 	}
-	themeSassHelperSources, err := resolveThemeSassHelperSources(root, packageThemeSassEtcSources)
+	baseEtcSources := append(append(append([]string{}, appSassEtc...), packageSassEtcSources...), packageThemeSassEtcSources...)
+	baseEtcImportPaths, err := resolveSassImportWatchPaths(root, baseEtcSources)
+	if err != nil {
+		return BuildResult{}, err
+	}
+	themeSassHelperRoots := append(append([]packageSassEtcRoot{}, appPackages.sassEtcRoots...), frameworkPackages.sassEtcRoots...)
+	themeSassHelperRoots = append(themeSassHelperRoots, packageSassEtcHelperRoots(appPackages.sdkRoot, baseEtcImportPaths)...)
+	themeSassHelperSources, err := resolveThemeSassHelperSources(root, packageThemeSassEtcSources, themeSassHelperRoots, ignorePatterns)
 	if err != nil {
 		return BuildResult{}, err
 	}
 	etcSassSources := append(append(append(append([]string{}, appSassEtc...), packageSassEtcSources...), themeSassHelperSources...), packageThemeSassEtcSources...)
-	appEtcVariables, err := collectSassVariableNames(etcSassSources)
+	etcSassImportWatchPaths, err := resolveSassImportWatchPaths(root, etcSassSources)
+	if err != nil {
+		return BuildResult{}, err
+	}
+	etcSassVariableSources := append(append([]string{}, etcSassSources...), etcSassImportWatchPaths...)
+	appEtcVariables, err := collectSassVariableNames(etcSassVariableSources)
 	if err != nil {
 		return BuildResult{}, err
 	}
@@ -221,7 +233,7 @@ func BuildWithTargetOptions(appDir, outputDir, selectedToolkit, selectedPlatform
 	if err != nil {
 		return BuildResult{}, err
 	}
-	sassSources := uniquePaths(append(append(append(append(append(append(append(append(appSassEtc, packageSassEtcSources...), themeSassHelperSources...), packageSassVarSources...), packageThemeSassEtcSources...), appSassVar...), packageSassSources...), appSassSrc...), classSassSources...))
+	sassSources := uniquePaths(append(append(append(append(append(append(append(append(appSassEtc, themeSassHelperSources...), packageSassEtcSources...), packageSassVarSources...), packageThemeSassEtcSources...), appSassVar...), packageSassSources...), appSassSrc...), classSassSources...))
 	if len(sassSources) > 0 && toolkit == "" {
 		return BuildResult{}, fmt.Errorf("Sass compilation requires a selected toolkit; pass -toolkit classic or -toolkit modern")
 	}
@@ -234,7 +246,13 @@ func BuildWithTargetOptions(appDir, outputDir, selectedToolkit, selectedPlatform
 	if err != nil {
 		return BuildResult{}, err
 	}
+	sassMixins["border-radius"] = true
+	sassMixins["opacity"] = true
 	sassSources, sassMixinWarnings, err := filterSassSourcesByMixins(sassSources, sassMixins)
+	if err != nil {
+		return BuildResult{}, err
+	}
+	sassIncludeDefaults, err := resolveSassIncludeDefaults(append(append([]string{}, sassSources...), sassImportWatchPaths...), packageSassVariables)
 	if err != nil {
 		return BuildResult{}, err
 	}
@@ -403,6 +421,9 @@ func BuildWithTargetOptions(appDir, outputDir, selectedToolkit, selectedPlatform
 		return BuildResult{}, err
 	}
 	inlineSassImports := make(map[string]bool, len(packageThemeSassEtcSources)+len(themeSassHelperSources))
+	for _, source := range packageSassEtcSources {
+		inlineSassImports[source] = true
+	}
 	for _, source := range packageThemeSassEtcSources {
 		inlineSassImports[source] = true
 	}
@@ -411,7 +432,7 @@ func BuildWithTargetOptions(appDir, outputDir, selectedToolkit, selectedPlatform
 		inlineSassImports[source] = true
 		skipThemeImports[source] = true
 	}
-	classSassCSS, classSassWarnings, err := compileClassSassWithInlineImports(root, sassSources, minify, inlineSassImports, skipThemeImports, packageSassVariables)
+	classSassCSS, classSassWarnings, err := compileClassSassWithInlineImports(root, sassSources, minify, inlineSassImports, skipThemeImports, packageSassVariables, sassIncludeDefaults)
 	if err != nil {
 		return BuildResult{}, err
 	}

@@ -19,7 +19,9 @@ var sassVariableDeclaration = regexp.MustCompile(`(?m)^[\t ]*\$([a-zA-Z_][a-zA-Z
 var sassVariableReference = regexp.MustCompile(`\$([a-zA-Z_][a-zA-Z0-9_-]*)`)
 var sassMixinDefinition = regexp.MustCompile(`(?m)^[\t ]*@mixin[\t ]+([a-zA-Z_-][a-zA-Z0-9_-]*)`)
 var sassMixinInclude = regexp.MustCompile(`@include[\t ]+([a-zA-Z_-][a-zA-Z0-9_-]*)`)
+var sassIncludeVariableReference = regexp.MustCompile(`\$(include-[a-zA-Z0-9_-]+)`)
 var sassFunctionDefinition = regexp.MustCompile(`(?m)^[\t ]*@function[\t ]+([a-zA-Z_-][a-zA-Z0-9_-]*)`)
+var fashionResourcePathAssignment = regexp.MustCompile(`(?m)^[\t ]*\$[a-zA-Z_][a-zA-Z0-9_-]*[\t ]*:[\t ]*get-resource-path[\t ]*\(`)
 var fashionBoxFunctionArgs = regexp.MustCompile(`(?m)(@function[\t ]+(?:top|right|bottom|left|vertical|horizontal|boxmax|boxmin)[\t ]*\([\t ]*\$box[\t ]*,[\t ]*\$fallbackBox)([\t ]*\))`)
 var fashionDynamicAssignment = regexp.MustCompile(`^[\t ]*\$[a-zA-Z_][a-zA-Z0-9_-]*[\t ]*:[\t ]*dynamic\(`)
 var fashionDynamicSuffix = regexp.MustCompile(`^[\t ]*(?:!default[\t ]*)?;?[\t ]*(?://.*)?$`)
@@ -237,7 +239,7 @@ func resolvePackageSassEtcSources(appRoot string, roots []packageSassEtcRoot, ig
 	return uniquePaths(sources), uniquePaths(themeSources), uniquePaths(watchPaths), warnings, nil
 }
 
-func resolveThemeSassHelperSources(appRoot string, roots []string) ([]string, error) {
+func resolveThemeSassHelperSources(appRoot string, roots []string, packageRoots []packageSassEtcRoot, ignore []*regexp.Regexp) ([]string, error) {
 	visited := make(map[string]bool)
 	var helpers []string
 	var visit func(string) error
@@ -278,6 +280,55 @@ func resolveThemeSassHelperSources(appRoot string, roots []string) ([]string, er
 			return nil, err
 		}
 	}
+	for _, packageRoot := range packageRoots {
+		root := packageRoot.Path
+		entryRoot, err := filepath.Abs(root)
+		if err != nil {
+			return nil, err
+		}
+		info, err := os.Stat(root)
+		if err != nil {
+			if os.IsNotExist(err) {
+				continue
+			}
+			return nil, fmt.Errorf("stat Sass helper root %s: %w", root, err)
+		}
+		if !info.IsDir() {
+			root = filepath.Dir(root)
+		}
+		err = filepath.WalkDir(root, func(path string, entry fs.DirEntry, walkErr error) error {
+			if walkErr != nil {
+				return walkErr
+			}
+			if entry.IsDir() {
+				if path != root && isIgnoredProjectPath(appRoot, path, ignore) {
+					return filepath.SkipDir
+				}
+				return nil
+			}
+			if strings.EqualFold(entry.Name(), "all.scss") || !strings.EqualFold(filepath.Ext(path), ".scss") || isIgnoredProjectPath(appRoot, path, ignore) {
+				return nil
+			}
+			absolute, err := filepath.Abs(path)
+			if err != nil {
+				return err
+			}
+			if !info.IsDir() && absolute == entryRoot {
+				return nil
+			}
+			data, err := os.ReadFile(absolute)
+			if err != nil {
+				return err
+			}
+			if sassSourceIsSassHelper(data) {
+				helpers = append(helpers, absolute)
+			}
+			return nil
+		})
+		if err != nil {
+			return nil, fmt.Errorf("scan Sass helper roots under %s: %w", root, err)
+		}
+	}
 	return uniquePaths(helpers), nil
 }
 
@@ -307,6 +358,36 @@ func sassSourceIsSassHelper(source []byte) bool {
 		}
 	}
 	return true
+}
+
+func packageSassEtcHelperRoots(sdkRoot string, sources []string) []packageSassEtcRoot {
+	if sdkRoot == "" {
+		return nil
+	}
+	seen := make(map[string]bool)
+	var roots []packageSassEtcRoot
+	for _, source := range sources {
+		absolute, err := filepath.Abs(source)
+		if err != nil || !isPathWithin(absolute, sdkRoot) {
+			continue
+		}
+		for directory := filepath.Dir(absolute); ; directory = filepath.Dir(directory) {
+			manifest := filepath.Join(directory, "package.json")
+			if _, err := os.Stat(manifest); err == nil {
+				helperRoot := filepath.Join(directory, "sass", "etc")
+				if info, err := os.Stat(helperRoot); err == nil && info.IsDir() && !seen[helperRoot] {
+					seen[helperRoot] = true
+					roots = append(roots, packageSassEtcRoot{Path: helperRoot})
+				}
+				break
+			}
+			parent := filepath.Dir(directory)
+			if parent == directory || !isPathWithin(parent, sdkRoot) {
+				break
+			}
+		}
+	}
+	return roots
 }
 
 func normalizeFashionBoxFunctionDefaults(source []byte) []byte {
@@ -719,8 +800,7 @@ func filterSassSourcesByMixins(sources []string, mixins map[string]bool) ([]stri
 			return nil, nil, fmt.Errorf("read Sass source %s: %w", source, err)
 		}
 		var missing []string
-		for _, match := range sassMixinInclude.FindAllSubmatch(data, -1) {
-			name := string(match[1])
+		for _, name := range sassMixinIncludesOutsideDefinitions(data) {
 			if !mixins[name] {
 				missing = append(missing, name)
 			}
@@ -733,6 +813,64 @@ func filterSassSourcesByMixins(sources []string, mixins map[string]bool) ([]stri
 		included = append(included, source)
 	}
 	return included, warnings, nil
+}
+
+func resolveSassIncludeDefaults(sources []string, available map[string]bool) (map[string]string, error) {
+	defined := make(map[string]bool, len(available))
+	for name := range available {
+		defined[name] = true
+	}
+	var references []string
+	for _, source := range uniquePaths(sources) {
+		data, err := os.ReadFile(source)
+		if err != nil {
+			return nil, fmt.Errorf("read Sass include source %s: %w", source, err)
+		}
+		for name := range sassVariableNames(data) {
+			defined[name] = true
+		}
+		for _, match := range sassIncludeVariableReference.FindAllSubmatch(data, -1) {
+			references = append(references, string(match[1]))
+		}
+	}
+	defaults := make(map[string]string)
+	for _, name := range uniqueStrings(references) {
+		if !defined[name] {
+			defaults[name] = "false"
+		}
+	}
+	return defaults, nil
+}
+
+func sassMixinIncludesOutsideDefinitions(source []byte) []string {
+	var includes []string
+	depth := 0
+	mixinDepth := 0
+	pendingMixin := false
+	for _, line := range strings.Split(string(source), "\n") {
+		trimmed := strings.TrimSpace(line)
+		if strings.HasPrefix(trimmed, "//") || strings.HasPrefix(trimmed, "/*") || strings.HasPrefix(trimmed, "*") {
+			continue
+		}
+		if mixinDepth == 0 {
+			if sassMixinDefinition.MatchString(line) {
+				pendingMixin = true
+			} else if !pendingMixin {
+				for _, match := range sassMixinInclude.FindAllSubmatch([]byte(line), -1) {
+					includes = append(includes, string(match[1]))
+				}
+			}
+		}
+		depth += strings.Count(line, "{") - strings.Count(line, "}")
+		if pendingMixin && depth > 0 {
+			mixinDepth = depth
+			pendingMixin = false
+		}
+		if mixinDepth > 0 && depth < mixinDepth {
+			mixinDepth = 0
+		}
+	}
+	return uniqueStrings(includes)
 }
 
 func unsupportedPackageSassSource(source []byte, availableVariables map[string]bool) string {
@@ -1135,10 +1273,10 @@ func sassImportCandidates(path string) []string {
 }
 
 func compileClassSass(appRoot string, sources []string, minify bool) ([]byte, []string, error) {
-	return compileClassSassWithInlineImports(appRoot, sources, minify, nil, nil, nil)
+	return compileClassSassWithInlineImports(appRoot, sources, minify, nil, nil, nil, nil)
 }
 
-func compileClassSassWithInlineImports(appRoot string, sources []string, minify bool, inlineImports, skipImports map[string]bool, availableVariables map[string]bool) ([]byte, []string, error) {
+func compileClassSassWithInlineImports(appRoot string, sources []string, minify bool, inlineImports, skipImports map[string]bool, availableVariables map[string]bool, contextVariables map[string]string) ([]byte, []string, error) {
 	if len(sources) == 0 {
 		return nil, nil, nil
 	}
@@ -1154,6 +1292,119 @@ func compileClassSassWithInlineImports(appRoot string, sources []string, minify 
 	var warnings []string
 	imported := 0
 	entry.WriteString("@function dynamic($value, $args...) { @return $value; }\n")
+	entry.WriteString(`$current-resource-root: "resources" !default;
+$relative-image-path-for-uis: "" !default;
+$theme-resource-path: "" !default;
+$image-search-path: "" !default;
+$image-extension: "png" !default;
+$slicer-image-extension: "png" !default;
+$include-missing-images: false !default;
+$enable-missing-image-warnings: false !default;
+$output-paths: null !default;
+
+@function map_create() { @return (); }
+@function map_get($map, $key) {
+    @if type-of($map) == "map" {
+        @each $candidate, $value in $map {
+            @if $candidate == $key { @return $value; }
+        }
+    }
+    @return "";
+}
+@function map_put($map, $key, $value) {
+    @if type-of($map) != "map" { $map: (); }
+    @return map-merge($map, ($key: $value));
+}
+@function file_join($first, $parts...) {
+    $result: if($first == null, "", $first);
+    @each $part in $parts {
+        @if $part != null and $part != "" {
+            @if $result == "" { $result: $part; }
+            @else { $result: $result + "/" + $part; }
+        }
+    }
+    @return $result;
+}
+@function theme_image_exists($search-path, $path) { @return false; }
+@function parseIconArgs($glyph) {
+    $character: nth($glyph, 1);
+    $font-family: null;
+    $rotation: null;
+    $length: length($glyph);
+    @if $length == 2 {
+        $item: nth($glyph, 2);
+        @if type-of($item) == "number" { $rotation: $item; }
+        @else { $font-family: $item; }
+    } @else if $length > 2 {
+        $font-family: nth($glyph, 2);
+        $rotation: nth($glyph, 3);
+    }
+    @return ($character, $font-family, $rotation);
+}
+@function parseFontIconArgs($glyph) {
+    $character: nth($glyph, 1);
+    $font-size: null;
+    $font-family: null;
+    $rotation: null;
+    $length: length($glyph);
+    @if $length == 2 {
+        $item: nth($glyph, 2);
+        @if type-of($item) == "number" {
+            @if unit($item) == "" { $rotation: $item; }
+            @else { $font-size: $item; }
+        } @else { $font-family: $item; }
+    } @else if $length == 3 {
+        $second: nth($glyph, 2);
+        $third: nth($glyph, 3);
+        @if type-of($second) == "number" {
+            $font-size: $second;
+            @if type-of($third) == "number" { $rotation: $third; }
+            @else { $font-family: $third; }
+        } @else {
+            $font-family: $second;
+            $rotation: $third;
+        }
+    } @else if $length > 3 {
+        $font-size: nth($glyph, 2);
+        $font-family: nth($glyph, 3);
+        $rotation: nth($glyph, 4);
+    }
+    @return ($character, $font-size, $font-family, $rotation);
+}
+@mixin border-radius($radius) {
+    -webkit-border-radius: $radius;
+    border-radius: $radius;
+}
+@mixin opacity($opacity) { opacity: $opacity; }
+`)
+	entry.WriteString(`@function parsebox($box, $index) {
+    $length: length($box);
+    @if $length == 0 { @return null; }
+    @if $length == 1 { @return nth($box, 1); }
+    @if $length == 2 {
+        @if $index == 1 or $index == 3 { @return nth($box, 1); }
+        @return nth($box, 2);
+    }
+    @if $length == 3 {
+        @if $index == 1 { @return nth($box, 1); }
+        @if $index == 2 or $index == 4 { @return nth($box, 2); }
+        @return nth($box, 3);
+    }
+    @return nth($box, $index);
+}
+`)
+	contextNames := make([]string, 0, len(contextVariables))
+	for name := range contextVariables {
+		contextNames = append(contextNames, name)
+	}
+	sort.Strings(contextNames)
+	for _, name := range contextNames {
+		entry.WriteString("$")
+		entry.WriteString(name)
+		entry.WriteString(": ")
+		entry.WriteString(contextVariables[name])
+		entry.WriteString(" !default;\n")
+	}
 	for _, source := range sources {
 		data, err := os.ReadFile(source)
 		if err != nil {
@@ -1173,9 +1424,11 @@ func compileClassSassWithInlineImports(appRoot string, sources []string, minify 
 			normalized = data
 			dynamicChanged = false
 		}
-		if reason := unsupportedFashionSource(normalized); reason != "" && !inlineImports[source] {
-			warnings = append(warnings, fmt.Sprintf("skipped Fashion-dependent Sass source %s: %s", source, reason))
-			continue
+		if reason := unsupportedFashionSource(normalized); reason != "" {
+			if !inlineImports[source] || !strings.Contains(reason, "dynamic()") {
+				warnings = append(warnings, fmt.Sprintf("skipped Fashion-dependent Sass source %s: %s", source, reason))
+				continue
+			}
 		}
 		if dynamicChanged || inlineImports[source] {
 			var importWarnings []string
@@ -1300,15 +1553,127 @@ func normalizeFashionDynamic(source []byte) ([]byte, bool, string) {
 		output.WriteString(lineEnding)
 		changed = true
 	}
-	return []byte(output.String()), changed, ""
+	normalized := []byte(output.String())
+	if changed {
+		ordered, reordered := orderSassVariableAssignments(normalized)
+		normalized = ordered
+		changed = changed || reordered
+	}
+	return normalized, changed, ""
+}
+
+func orderSassVariableAssignments(source []byte) ([]byte, bool) {
+	type assignmentBlock struct {
+		content      string
+		name         string
+		references   []string
+		dependencies map[int]bool
+	}
+	lines := strings.SplitAfter(string(source), "\n")
+	var blocks []assignmentBlock
+	var trailing strings.Builder
+	blockStart := 0
+	definitions := make(map[string]int)
+	for index, line := range lines {
+		content := strings.TrimSpace(strings.TrimSuffix(strings.TrimSuffix(line, "\n"), "\r"))
+		if content == "" || strings.HasPrefix(content, "//") || strings.HasPrefix(content, "/*") || strings.HasPrefix(content, "*") || strings.HasPrefix(content, "*/") {
+			continue
+		}
+		declaration := sassVariableDeclaration.FindStringSubmatch(content)
+		if declaration == nil {
+			return source, false
+		}
+		name := string(declaration[1])
+		colon := strings.IndexByte(content, ':')
+		if colon < 0 {
+			return source, false
+		}
+		block := assignmentBlock{content: strings.Join(lines[blockStart:index+1], ""), name: name}
+		for _, reference := range sassVariableReference.FindAllSubmatch([]byte(content[colon+1:]), -1) {
+			block.references = append(block.references, string(reference[1]))
+		}
+		blockIndex := len(blocks)
+		blocks = append(blocks, block)
+		definitions[name] = blockIndex
+		blockStart = index + 1
+	}
+	if len(blocks) < 2 {
+		return source, false
+	}
+	for index := range blocks {
+		blocks[index].dependencies = make(map[int]bool)
+		for _, reference := range blocks[index].references {
+			if dependency, exists := definitions[reference]; exists && dependency != index {
+				blocks[index].dependencies[dependency] = true
+			}
+		}
+	}
+	if blockStart < len(lines) {
+		trailing.WriteString(strings.Join(lines[blockStart:], ""))
+	}
+	ordered := make([]int, 0, len(blocks))
+	added := make(map[int]bool, len(blocks))
+	for len(ordered) < len(blocks) {
+		progress := false
+		for index, block := range blocks {
+			if added[index] {
+				continue
+			}
+			ready := true
+			for dependency := range block.dependencies {
+				if !added[dependency] {
+					ready = false
+					break
+				}
+			}
+			if ready {
+				ordered = append(ordered, index)
+				added[index] = true
+				progress = true
+			}
+		}
+		if !progress {
+			return source, false
+		}
+	}
+	var output strings.Builder
+	changed := false
+	for outputIndex, blockIndex := range ordered {
+		output.WriteString(blocks[blockIndex].content)
+		if outputIndex != blockIndex {
+			changed = true
+		}
+	}
+	output.WriteString(trailing.String())
+	return []byte(output.String()), changed
 }
 
 func unsupportedFashionSource(source []byte) string {
 	if _, _, reason := normalizeFashionDynamic(source); reason != "" {
 		return reason
 	}
-	if bytes.Contains(source, []byte("theme-background-image(")) {
+	if fashionResourcePathAssignment.Match(source) {
+		return "get-resource-path requires Sencha Fashion resource context"
+	}
+	if bytes.Contains(source, []byte("theme-background-image(")) && !themeBackgroundImageOnlyInMixins(source) && !bytes.Contains(source, []byte("@function theme-background-image(")) {
 		return "theme-background-image requires Sencha Fashion resource context"
 	}
 	return ""
+}
+
+func themeBackgroundImageOnlyInMixins(source []byte) bool {
+	if !sassMixinDefinition.Match(source) {
+		return false
+	}
+	depth := 0
+	for _, line := range strings.Split(string(source), "\n") {
+		if strings.Contains(line, "theme-background-image(") && depth == 0 {
+			return false
+		}
+		depth += strings.Count(line, "{") - strings.Count(line, "}")
+		if depth < 0 {
+			depth = 0
+		}
+	}
+	return true
 }

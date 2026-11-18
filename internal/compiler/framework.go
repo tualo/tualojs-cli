@@ -43,9 +43,10 @@ type frameworkDescriptor struct {
 }
 
 type sdkManifest struct {
-	Name          string `json:"name"`
-	Version       string `json:"version"`
-	CompatVersion string `json:"compatVersion"`
+	Name          string            `json:"name"`
+	Version       string            `json:"version"`
+	CompatVersion string            `json:"compatVersion"`
+	Sass          packageSassConfig `json:"sass"`
 }
 
 type packageSassConfig struct {
@@ -153,6 +154,35 @@ func resolveAppPackagesWithOptional(appRoot string, required, optional []string,
 	}
 
 	resolution := packageResolution{version: sdk.Version, sdkRoot: sdkRoot, watchPaths: []string{workspacePath, manifestPath}}
+	frameworkPackage := &sdkPackage{root: sdkRoot}
+	frameworkPackage.manifest.Sencha.Name = "ext"
+	frameworkPackage.manifest.Sencha.Sass = sdk.Sass
+	frameworkEtcRoots, err := expandPackagePaths(frameworkPackage, sdk.Sass.Etc, toolkit, locale)
+	if err != nil {
+		return packageResolution{}, err
+	}
+	for _, path := range frameworkEtcRoots {
+		if !isPathWithin(path.path, sdkRoot) {
+			return packageResolution{}, fmt.Errorf("Ext JS framework Sass etc path escapes SDK directory")
+		}
+		resolution.sassEtcRoots = append(resolution.sassEtcRoots, packageSassEtcRoot{Path: path.path})
+	}
+	frameworkVarRoots, err := expandPackagePaths(frameworkPackage, sdk.Sass.Var, toolkit, locale)
+	if err != nil {
+		return packageResolution{}, err
+	}
+	for _, path := range frameworkVarRoots {
+		if !isPathWithin(path.path, sdkRoot) {
+			return packageResolution{}, fmt.Errorf("Ext JS framework Sass var path escapes SDK directory")
+		}
+		resolution.sassVarRoots = append(resolution.sassVarRoots, path.path)
+	}
+	frameworkSassRoots, frameworkSassWarnings, err := expandPackageClassSassRoots(frameworkPackage, toolkit, locale)
+	if err != nil {
+		return packageResolution{}, err
+	}
+	resolution.sassRoots = append(resolution.sassRoots, frameworkSassRoots...)
+	resolution.sassWarnings = append(resolution.sassWarnings, frameworkSassWarnings...)
 	if len(required) == 0 && len(optional) == 0 {
 		return resolution, nil
 	}

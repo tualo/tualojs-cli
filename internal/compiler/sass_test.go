@@ -31,12 +31,14 @@ $mixed: dynamic(mix(#fff, $color, 50%));
 $sum: dynamic(1px + 2px);
 $rounded: dynamic(round(15px * 1.2));
 $implicit-semicolon: dynamic(#123)
+$forward: dynamic($later);
+$later: dynamic(#456);
 `)
 	got, changed, reason := normalizeFashionDynamic(source)
 	if reason != "" || !changed {
 		t.Fatalf("normalizeFashionDynamic changed=%t, reason=%q", changed, reason)
 	}
-	if want := "$color: #ddd;\n$spacing: 12px;\n$enabled: true;\n$derived: $color;\n$mixed: mix(#fff, $color, 50%);\n$sum: 1px + 2px;\n$rounded: round(15px * 1.2);\n$implicit-semicolon: #123;\n"; string(got) != want {
+	if want := "$color: #ddd;\n$spacing: 12px;\n$enabled: true;\n$derived: $color;\n$mixed: mix(#fff, $color, 50%);\n$sum: 1px + 2px;\n$rounded: round(15px * 1.2);\n$implicit-semicolon: #123;\n$later: #456;\n$forward: $later;\n"; string(got) != want {
 		t.Fatalf("normalized Sass = %q, want %q", got, want)
 	}
 	for _, unsupported := range [][]byte{
@@ -180,7 +182,7 @@ func TestDartSassCompilesFashionBoxFunctionsWithFallbackDefaults(t *testing.T) {
 	root := makeFixture(t, map[string]string{
 		"sass/functions.scss": `@function top($box, $fallbackBox) {
     @if $box == null { $box: $fallbackBox; }
-    @return nth($box, 1);
+    @return parsebox($box, 1);
 }`,
 		"sass/Main.scss": `.main { height: top(12px); }`,
 	})
@@ -188,7 +190,7 @@ func TestDartSassCompilesFashionBoxFunctionsWithFallbackDefaults(t *testing.T) {
 	css, warnings, err := compileClassSassWithInlineImports(root, []string{
 		functions,
 		filepath.Join(root, "sass", "Main.scss"),
-	}, false, map[string]bool{functions: true}, nil, nil)
+	}, false, map[string]bool{functions: true}, nil, nil, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -210,19 +212,24 @@ func TestBuildLoadsPackageSassEtcAndLocalImports(t *testing.T) {
 	}
 
 	root := makeFixture(t, map[string]string{
-		"app.json":                                       `{"name":"Example","namespace":"Example","toolkit":"classic","theme":"theme-custom","requires":["widget-lib"],"classpath":["app"],"js":[{"path":"app.js","bundle":true}]}`,
-		"workspace.json":                                 `{"frameworks":{"ext":{"path":"sdk","version":"8.0.0.43"}}}`,
-		"sdk/package.json":                               `{"name":"ext","version":"8.0.0.43","compatVersion":"8.0.0"}`,
-		"sdk/packages/core/package.json":                 `{"version":"8.0.0.43","sencha":{"name":"core","classpath":"${package.dir}/src","sass":{"etc":"${package.dir}/sass/etc/all.scss"}}}`,
-		"sdk/packages/widget-lib/package.json":           `{"version":"1.0.0","sencha":{"name":"widget-lib","requires":["core"],"classpath":"${package.dir}/src","sass":{"src":"${package.dir}/sass/src"}}}`,
-		"sdk/packages/theme-custom/package.json":         `{"version":"1.0.0","sencha":{"name":"theme-custom","type":"theme","extend":"core","classpath":"${package.dir}/src","sass":{"etc":"${package.dir}/sass/etc/all.scss"}}}`,
-		"sdk/classic/classic/package.json":               `{"version":"8.0.0.43","sencha":{"name":"classic","requires":["core"],"classpath":"${package.dir}/src"}}`,
-		"sdk/packages/core/sass/etc/all.scss":            "$prefix: dynamic('x-');\n@import \"mixins\";\n",
-		"sdk/packages/core/sass/etc/_mixins.scss":        `@mixin unused-package-mixin { color: red; }`,
+		"app.json":                               `{"name":"Example","namespace":"Example","toolkit":"classic","theme":"theme-custom","requires":["widget-lib"],"classpath":["app"],"js":[{"path":"app.js","bundle":true}]}`,
+		"workspace.json":                         `{"frameworks":{"ext":{"path":"sdk","version":"8.0.0.43"}}}`,
+		"sdk/package.json":                       `{"name":"ext","version":"8.0.0.43","compatVersion":"8.0.0","sass":{"etc":"${package.dir}/sass/etc/all.scss"}}`,
+		"sdk/packages/core/package.json":         `{"version":"8.0.0.43","sencha":{"name":"core","classpath":"${package.dir}/src","sass":{"etc":"${package.dir}/sass/etc/all.scss"}}}`,
+		"sdk/packages/widget-lib/package.json":   `{"version":"1.0.0","sencha":{"name":"widget-lib","requires":["core"],"classpath":"${package.dir}/src","sass":{"src":"${package.dir}/sass/src"}}}`,
+		"sdk/packages/theme-custom/package.json": `{"version":"1.0.0","sencha":{"name":"theme-custom","type":"theme","extend":"core","classpath":"${package.dir}/src","sass":{"etc":"${package.dir}/sass/etc/all.scss","var":"${package.dir}/sass/var"}}}`,
+		"sdk/classic/classic/package.json":       `{"version":"8.0.0.43","sencha":{"name":"classic","requires":["core"],"classpath":"${package.dir}/src"}}`,
+		"sdk/sass/etc/all.scss":                  "$sdk-prefix: dynamic('sdk-');\n@import \"globals\";\n",
+		"sdk/sass/etc/_globals.scss":             "$sdk-global-color: #789;",
+		"sdk/packages/core/sass/etc/all.scss":    "$prefix: dynamic('x-');\n@import \"mixins\";\n",
+		"sdk/packages/core/sass/etc/_mixins.scss": `$shared-color: #789;
+@mixin unused-package-mixin { color: red; }`,
 		"sdk/packages/theme-custom/sass/etc/all.scss":    "$theme-color: #abc;\n@import \"theme\";\n",
 		"sdk/packages/theme-custom/sass/etc/_theme.scss": `@mixin theme-package-mixin { border-color: $theme-color; }`,
-		"sdk/packages/widget-lib/src/Widget.js":          `Ext.define('Lib.Widget', {});`,
-		"sdk/packages/widget-lib/sass/src/Widget.scss":   `.#{$prefix}widget { @include unused-package-mixin; @include theme-package-mixin; color: #246; }`,
+		"sdk/packages/theme-custom/sass/var/Button.scss": `$button-radius: 3px;
+@mixin extjs-button-small-ui($ui) { .#{$prefix}btn-#{$ui} { border-radius: $button-radius; } }`,
+		"sdk/packages/widget-lib/src/Widget.js":        `Ext.define('Lib.Widget', {});`,
+		"sdk/packages/widget-lib/sass/src/Widget.scss": `.#{$prefix}widget { @include unused-package-mixin; @include theme-package-mixin; @include extjs-button-small-ui('test'); color: #246; background-color: $shared-color; outline-color: $sdk-global-color; }`,
 		"app.js":       `Ext.application({name: 'Example'}); Ext.require('Lib.Widget');`,
 		"app/Empty.js": "",
 	})
@@ -238,14 +245,17 @@ func TestBuildLoadsPackageSassEtcAndLocalImports(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(string(css), ".x-widget") || !strings.Contains(string(css), "color: red") || !strings.Contains(string(css), "border-color: #abc") || !strings.Contains(string(css), "color: #246") {
+	if !strings.Contains(string(css), ".x-widget") || !strings.Contains(string(css), ".x-btn-test") || !strings.Contains(string(css), "border-radius: 3px") || !strings.Contains(string(css), "color: red") || !strings.Contains(string(css), "border-color: #abc") || !strings.Contains(string(css), "color: #246") || !strings.Contains(string(css), "background-color: #789") || !strings.Contains(string(css), "outline-color: #789") {
 		t.Fatalf("compiled package Sass = %s", css)
 	}
 	for _, path := range []string{
+		filepath.Join(root, "sdk", "sass", "etc", "all.scss"),
+		filepath.Join(root, "sdk", "sass", "etc", "_globals.scss"),
 		filepath.Join(root, "sdk", "packages", "core", "sass", "etc", "all.scss"),
 		filepath.Join(root, "sdk", "packages", "core", "sass", "etc", "_mixins.scss"),
 		filepath.Join(root, "sdk", "packages", "theme-custom", "sass", "etc", "all.scss"),
 		filepath.Join(root, "sdk", "packages", "theme-custom", "sass", "etc", "_theme.scss"),
+		filepath.Join(root, "sdk", "packages", "theme-custom", "sass", "var", "Button.scss"),
 	} {
 		found := false
 		for _, watchPath := range result.WatchPaths {
@@ -315,21 +325,38 @@ func TestBuildLoadsFrameworkPackageClassSass(t *testing.T) {
 
 func TestFilterSassSourcesByMixinsSkipsUnknownMixin(t *testing.T) {
 	root := makeFixture(t, map[string]string{
-		"app/Known.scss":   `.known { @include color-mixin; }`,
-		"app/Unknown.scss": `.unknown { @include extjs-button-small-ui; }`,
+		"app/Known.scss":           `.known { @include color-mixin; }`,
+		"app/Unknown.scss":         `.unknown { @include extjs-button-small-ui; }`,
+		"app/MixinDefinition.scss": `@mixin wrapper { .inner { @include generated-fashion-mixin; } }`,
 	})
 	known := filepath.Join(root, "app", "Known.scss")
 	unknown := filepath.Join(root, "app", "Unknown.scss")
+	definition := filepath.Join(root, "app", "MixinDefinition.scss")
 
-	sources, warnings, err := filterSassSourcesByMixins([]string{known, unknown}, map[string]bool{"color-mixin": true})
+	sources, warnings, err := filterSassSourcesByMixins([]string{known, unknown, definition}, map[string]bool{"color-mixin": true})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !reflect.DeepEqual(sources, []string{known}) {
-		t.Fatalf("Sass sources = %#v, want only known-mixin source", sources)
+	if !reflect.DeepEqual(sources, []string{known, definition}) {
+		t.Fatalf("Sass sources = %#v, want known-mixin source and unused mixin definition", sources)
 	}
 	if len(warnings) != 1 || !strings.Contains(warnings[0], "extjs-button-small-ui") {
 		t.Fatalf("Sass warnings = %#v, want unknown Fashion mixin warning", warnings)
+	}
+}
+
+func TestResolveSassIncludeDefaultsForUndeclaredFeatures(t *testing.T) {
+	root := makeFixture(t, map[string]string{
+		"app/Main.scss": `$include-ext-button-segmented: true;
+@if $include-ext-button-segmented { .button { display: inline-flex; } }
+@if $include-slicer-border-radius { .sliced { border-radius: 4px; } }`,
+	})
+	defaults, err := resolveSassIncludeDefaults([]string{filepath.Join(root, "app", "Main.scss")}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(defaults) != 1 || defaults["include-slicer-border-radius"] != "false" {
+		t.Fatalf("Sass include defaults = %#v, want slicer flag false and declared flag untouched", defaults)
 	}
 }
 
