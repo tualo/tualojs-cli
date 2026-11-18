@@ -857,7 +857,7 @@ func resolvePackageSassVariables(appRoot string, roots []string, initialVariable
 				warnings = append(warnings, fmt.Sprintf("skipped package Sass var source %s: references $%s whose Fashion value is null", source.path, name))
 				continue
 			}
-			reason := unsupportedPackageSassVariableSource(source.data, source.definitions, available)
+			reason := unsupportedPackageSassVariableSource(appRoot, source.path, source.data, source.definitions, available)
 			if strings.HasPrefix(reason, "references undefined package/theme variable $") {
 				remaining = append(remaining, source)
 				continue
@@ -880,7 +880,7 @@ func resolvePackageSassVariables(appRoot string, roots []string, initialVariable
 		}
 		if !progress {
 			for _, source := range remaining {
-				reason := unsupportedPackageSassVariableSource(source.data, source.definitions, available)
+				reason := unsupportedPackageSassVariableSource(appRoot, source.path, source.data, source.definitions, available)
 				warnings = append(warnings, fmt.Sprintf("skipped package Sass var source %s: %s", source.path, reason))
 			}
 			break
@@ -1095,18 +1095,14 @@ func topLevelSassVariableReferences(source []byte) []string {
 			assignment = true
 			colon := strings.IndexByte(line, ':')
 			if colon >= 0 {
-				for _, match := range sassVariableReference.FindAllSubmatch([]byte(line[colon+1:]), -1) {
-					references = append(references, string(match[1]))
-				}
+				references = append(references, sassVariableReferencesInExpression(line[colon+1:], parenDepth)...)
 			}
 		} else if assignment {
 			trimmed := strings.TrimSpace(line)
 			if atTopLevel && (strings.HasPrefix(trimmed, "@") || strings.HasPrefix(trimmed, ".") || strings.HasPrefix(trimmed, "#")) {
 				assignment = false
 			} else {
-				for _, match := range sassVariableReference.FindAllSubmatch([]byte(line), -1) {
-					references = append(references, string(match[1]))
-				}
+				references = append(references, sassVariableReferencesInExpression(line, parenDepth)...)
 			}
 		}
 		if assignment && strings.Contains(line, ";") {
@@ -1116,13 +1112,105 @@ func topLevelSassVariableReferences(source []byte) []string {
 	return references
 }
 
-func unsupportedPackageSassVariableSource(source []byte, definitions, available map[string]bool) string {
+func sassVariableReferencesInExpression(expression string, initialParenDepth int) []string {
+	var references []string
+	for _, match := range sassVariableReference.FindAllStringSubmatchIndex(expression, -1) {
+		if match[0] < 0 || match[1] < 0 {
+			continue
+		}
+		if sassVariableReferenceIsNamedArgument(expression, match[0], match[1], initialParenDepth) {
+			continue
+		}
+		references = append(references, expression[match[2]:match[3]])
+	}
+	return references
+}
+
+func sassVariableReferenceIsNamedArgument(expression string, start, end, initialParenDepth int) bool {
+	cursor := end
+	for cursor < len(expression) && (expression[cursor] == ' ' || expression[cursor] == '\t') {
+		cursor++
+	}
+	if cursor >= len(expression) || expression[cursor] != ':' {
+		return false
+	}
+	if initialParenDepth > 0 {
+		return true
+	}
+	stack := make([]int, 0, 4)
+	quote := byte(0)
+	escaped := false
+	for index := 0; index < start; index++ {
+		current := expression[index]
+		if quote != 0 {
+			if escaped {
+				escaped = false
+			} else if current == '\\' {
+				escaped = true
+			} else if current == quote {
+				quote = 0
+			}
+			continue
+		}
+		if current == '\'' || current == '"' {
+			quote = current
+			continue
+		}
+		switch current {
+		case '(':
+			stack = append(stack, index)
+		case ')':
+			if len(stack) > 0 {
+				stack = stack[:len(stack)-1]
+			}
+		}
+	}
+	if len(stack) == 0 {
+		return false
+	}
+	open := stack[len(stack)-1]
+	nameEnd := open
+	for nameEnd > 0 && (expression[nameEnd-1] == ' ' || expression[nameEnd-1] == '\t') {
+		nameEnd--
+	}
+	if nameEnd == 0 {
+		return false
+	}
+	previous := expression[nameEnd-1]
+	return previous == '_' || previous == '-' || previous >= 'a' && previous <= 'z' || previous >= 'A' && previous <= 'Z' || previous >= '0' && previous <= '9'
+}
+
+func unsupportedPackageSassVariableSource(appRoot, importer string, source []byte, definitions, available map[string]bool) string {
 	if reason := unsupportedFashionSource(source); reason != "" {
 		return reason
 	}
-	for _, marker := range []string{"@import", "@use", "@forward", "url("} {
-		if bytes.Contains(source, []byte(marker)) {
-			return "package Sass var uses imports, interpolation or resource URLs not covered by this step"
+	if bytes.Contains(source, []byte("url(")) {
+		return "package Sass var uses resource URLs not covered by this step"
+	}
+	for _, directive := range sassImportDirective.FindAllSubmatch(source, -1) {
+		if string(directive[1]) != "import" {
+			return "package Sass var uses @use or @forward, which are not supported"
+		}
+		value := string(directive[2])
+		if strings.Contains(value, "url(") {
+			return "package Sass var uses CSS URL imports, which are not supported"
+		}
+		paths := sassImportPath.FindAllStringSubmatch(value, -1)
+		if len(paths) == 0 {
+			return "package Sass var contains an unsupported import"
+		}
+		for _, pathMatch := range paths {
+			importPath := strings.TrimSpace(pathMatch[1])
+			if importPath == "" || strings.HasPrefix(importPath, "sass:") || strings.Contains(importPath, "://") || strings.HasSuffix(strings.ToLower(importPath), ".css") || strings.HasSuffix(strings.ToLower(importPath), ".js") {
+				return fmt.Sprintf("package Sass var import %q is not a local Sass import", importPath)
+			}
+			_, exists, err := resolveSassImport(appRoot, importer, importPath)
+			if err != nil {
+				return fmt.Sprintf("cannot resolve package Sass var import %q: %v", importPath, err)
+			}
+			if !exists {
+				return fmt.Sprintf("references unresolved package Sass var import %q", importPath)
+			}
 		}
 	}
 	for _, name := range topLevelSassVariableReferences(source) {
@@ -2415,20 +2503,37 @@ func orderSassVariableAssignments(source []byte) ([]byte, bool) {
 	var declarationIndexes []int
 	lineIndex := 0
 	valid := true
+	firstTailLine := -1
 	walkSassLinesWithDepth(source, func(line string, braceDepth, parenDepth int) {
 		declaration := sassVariableDeclaration.MatchString(line)
 		atTopLevel := braceDepth == 0 && parenDepth == 0
 		trimmed := strings.TrimSpace(line)
 		comment := trimmed == "" || strings.HasPrefix(trimmed, "//") || strings.HasPrefix(trimmed, "/*") || strings.HasPrefix(trimmed, "*") || strings.HasPrefix(trimmed, "*/")
 		if atTopLevel && declaration {
+			if firstTailLine >= 0 {
+				valid = false
+			}
 			declarationIndexes = append(declarationIndexes, lineIndex)
 		} else if atTopLevel && !comment {
-			valid = false
+			if firstTailLine < 0 {
+				firstTailLine = lineIndex
+			}
 		}
 		lineIndex++
 	})
 	if !valid || len(declarationIndexes) < 2 {
 		return source, false
+	}
+	tailStart := len(lines)
+	if firstTailLine >= 0 {
+		tailStart = firstTailLine
+		for tailStart > 0 {
+			trimmed := strings.TrimSpace(strings.TrimSuffix(strings.TrimSuffix(lines[tailStart-1], "\n"), "\r"))
+			if trimmed != "" && !strings.HasPrefix(trimmed, "//") && !strings.HasPrefix(trimmed, "/*") && !strings.HasPrefix(trimmed, "*") && !strings.HasPrefix(trimmed, "*/") {
+				break
+			}
+			tailStart--
+		}
 	}
 	starts := make([]int, len(declarationIndexes))
 	for i, declarationIndex := range declarationIndexes {
@@ -2447,9 +2552,12 @@ func orderSassVariableAssignments(source []byte) ([]byte, bool) {
 	blocks := make([]assignmentBlock, len(starts))
 	definitions := make(map[string]int)
 	for i, start := range starts {
-		end := len(lines)
+		end := tailStart
 		if i+1 < len(starts) {
 			end = starts[i+1]
+		}
+		if start >= end {
+			return source, false
 		}
 		declarationIndex := declarationIndexes[i]
 		content := strings.TrimSpace(strings.TrimSuffix(strings.TrimSuffix(lines[declarationIndex], "\n"), "\r"))
@@ -2503,6 +2611,7 @@ func orderSassVariableAssignments(source []byte) ([]byte, bool) {
 			changed = true
 		}
 	}
+	output.WriteString(strings.Join(lines[tailStart:], ""))
 	return []byte(output.String()), changed
 }
 

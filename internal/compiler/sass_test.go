@@ -247,6 +247,26 @@ $palette: dynamic((
 	}
 }
 
+func TestNormalizeFashionDynamicOrdersVariablesBeforeTrailingMixins(t *testing.T) {
+	source := []byte(`$offset: dynamic(round($height / 2));
+$height: dynamic(6px);
+
+@mixin menu-arrow {
+    top: $offset;
+}
+`)
+	got, changed, reason := normalizeFashionDynamic(source)
+	if reason != "" || !changed {
+		t.Fatalf("normalizeFashionDynamic changed=%t, reason=%q", changed, reason)
+	}
+	heightIndex := strings.Index(string(got), "$height: 6px;")
+	offsetIndex := strings.Index(string(got), "$offset: round($height / 2);")
+	mixinIndex := strings.Index(string(got), "@mixin menu-arrow")
+	if heightIndex < 0 || offsetIndex < 0 || mixinIndex < 0 || heightIndex > offsetIndex || offsetIndex > mixinIndex {
+		t.Fatalf("Sass assignments were not ordered ahead of the trailing mixin: %s", got)
+	}
+}
+
 func TestNormalizeFashionDuplicateMixinArgument(t *testing.T) {
 	source := []byte(`@include border-management(
     $border-radius: $border-radius,
@@ -384,6 +404,52 @@ func TestResolvePackageSassVariablesOrdersForwardReferences(t *testing.T) {
 	}
 	if !reflect.DeepEqual(watchPaths, wantWatchPaths) {
 		t.Fatalf("package Sass watch paths = %#v, want %#v", watchPaths, wantWatchPaths)
+	}
+}
+
+func TestResolvePackageSassVariablesSupportsLocalImports(t *testing.T) {
+	root := makeFixture(t, map[string]string{
+		"theme/sass/var/Breadcrumb.scss": `@import "Toolbar";
+$breadcrumb-width: dynamic($toolbar-button-width);`,
+		"theme/sass/var/Toolbar.scss": `$toolbar-button-width: dynamic(8px);
+$toolbar-icon-color: dynamic(adjust-color($base-color, $hue: 0.8deg, $saturation: 7%));`,
+		"theme/sass/var/Base.scss": `$base-color: dynamic(#246);`,
+		"app/Main.scss":            `.breadcrumb { width: $breadcrumb-width; }`,
+	})
+
+	sources, watchPaths, variables, warnings, err := resolvePackageSassVariables(root, []string{
+		filepath.Join(root, "theme", "sass", "var"),
+	}, nil, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	wantSources := []string{
+		filepath.Join(root, "theme", "sass", "var", "Base.scss"),
+		filepath.Join(root, "theme", "sass", "var", "Toolbar.scss"),
+		filepath.Join(root, "theme", "sass", "var", "Breadcrumb.scss"),
+	}
+	if !reflect.DeepEqual(sources, wantSources) {
+		t.Fatalf("package Sass sources = %#v, want dependency order %#v", sources, wantSources)
+	}
+	if !variables["base-color"] || !variables["toolbar-button-width"] || !variables["toolbar-icon-color"] || !variables["breadcrumb-width"] || len(warnings) != 0 {
+		t.Fatalf("available variables = %#v, warnings = %#v", variables, warnings)
+	}
+	wantWatchPaths := []string{
+		filepath.Join(root, "theme", "sass", "var", "Base.scss"),
+		filepath.Join(root, "theme", "sass", "var", "Breadcrumb.scss"),
+		filepath.Join(root, "theme", "sass", "var", "Toolbar.scss"),
+	}
+	if !reflect.DeepEqual(watchPaths, wantWatchPaths) {
+		t.Fatalf("package Sass watch paths = %#v, want both imported sources %#v", watchPaths, wantWatchPaths)
+	}
+
+	style := filepath.Join(root, "app", "Main.scss")
+	css, _, err := compileClassSass(root, append(sources, style), false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Contains(css, []byte("width: 8px")) {
+		t.Fatalf("compiled Sass with local variable import = %s", css)
 	}
 }
 

@@ -47,6 +47,7 @@ Die Implementierung startet mit einem kleinen, durch Tests abgesicherten vertika
 29. **Package-Sass-Einstiegsdateien** (`docs/29-package-sass-einstiegsdateien.md`): explizite `.scss`-Dateien aus `sencha.sass.src` als eigenständige Package-Stylesheets verarbeiten und ihre Imports beobachten.
 30. **Statische Fashion-Ressourcenpfade** (`docs/30-fashion-ressourcenpfade.md`): literale `get-resource-path()`-Aufrufe für nach `resources/shared` kopierte Package-Ressourcen in relative CSS-Pfade umwandeln.
 31. **Compass-Sass-Kompatibilität** (`docs/31-compass-sass-kompatibilitaet.md`): bekannte Compass-Importpfade auf die vom Compiler bereitgestellten CSS-Kompatibilitätsmixins abbilden.
+32. **Package-Sass-Variablenimports** (`docs/32-package-sass-variablenimports.md`): auflösbare lokale Sass-Imports aus `sass.var`-Dateien in der Variablenabhängigkeitsauflösung berücksichtigen.
 
 ## Architekturleitplanken
 
