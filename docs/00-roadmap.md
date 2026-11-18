@@ -44,6 +44,7 @@ Die Implementierung startet mit einem kleinen, durch Tests abgesicherten vertika
 26. **Mehrzeilige Fashion-Variablen** (`docs/26-mehrzeilige-dynamic-werte.md`): balancierte mehrzeilige `dynamic()`-Zuweisungen, insbesondere Sass-Maps, normalisieren.
 27. **Fashion-Null-Aliase** (`docs/27-fashion-null-aliase.md`): direkte Theme-Variablenreferenzen auf `null`-Werte im Sass-Kontext erhalten.
 28. **Fashion-Dart-Sass-Kompatibilität** (`docs/28-fashion-dart-sass-kompatibilitaet.md`): ausgewählte Fashion-Syntax aus Modern-Theme-Sass vor der Kompilierung in Dart-Sass-kompatible Funktions- und Mixin-Aufrufe überführen.
+29. **Package-Sass-Einstiegsdateien** (`docs/29-package-sass-einstiegsdateien.md`): explizite `.scss`-Dateien aus `sencha.sass.src` als eigenständige Package-Stylesheets verarbeiten und ihre Imports beobachten.
 
 ## Architekturleitplanken
 

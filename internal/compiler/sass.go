@@ -156,6 +156,13 @@ func expandPackageClassSassRoots(pkg *sdkPackage, toolkit, locale string) ([]pac
 	for _, path := range paths {
 		sassRoot := filepath.Clean(path.path)
 		sassSlash := filepath.ToSlash(sassRoot)
+		if strings.EqualFold(filepath.Ext(sassRoot), ".scss") {
+			if !isPathWithin(sassRoot, pkg.root) {
+				return nil, nil, fmt.Errorf("package %q Sass source escapes package directory", pkg.manifest.Sencha.Name)
+			}
+			roots = append(roots, packageSassSourceRoot{SassPath: sassRoot, Package: pkg.manifest.Sencha.Name, EntryFile: true})
+			continue
+		}
 		if !strings.HasSuffix(sassSlash, "/sass/src") {
 			warnings = append(warnings, fmt.Sprintf("skipped package Sass path %s: expected a package sass/src directory", sassRoot))
 			continue
@@ -174,6 +181,9 @@ func uniquePackageSassSourceRoots(roots []packageSassSourceRoot) []packageSassSo
 	unique := make([]packageSassSourceRoot, 0, len(roots))
 	for _, root := range roots {
 		key := filepath.Clean(root.SassPath) + "\x00" + filepath.Clean(root.ClassPath)
+		if root.EntryFile {
+			key += "\x00entry"
+		}
 		if seen[key] {
 			continue
 		}
@@ -993,6 +1003,29 @@ func resolvePackageClassSassSources(appRoot string, roots []packageSassSourceRoo
 	var watchPaths []string
 	var warnings []string
 	for _, root := range roots {
+		if root.EntryFile {
+			absolute, err := filepath.Abs(root.SassPath)
+			if err != nil {
+				return nil, nil, nil, err
+			}
+			if isIgnoredProjectPath(appRoot, absolute, ignore) {
+				continue
+			}
+			data, err := os.ReadFile(absolute)
+			if err != nil {
+				if os.IsNotExist(err) {
+					continue
+				}
+				return nil, nil, nil, fmt.Errorf("read package Sass entry %s: %w", absolute, err)
+			}
+			if reason := unsupportedFashionSource(data); reason != "" {
+				warnings = append(warnings, fmt.Sprintf("skipped package Sass entry %s (%s): %s", absolute, root.Package, reason))
+				continue
+			}
+			sources = append(sources, absolute)
+			watchPaths = append(watchPaths, absolute)
+			continue
+		}
 		info, err := os.Stat(root.SassPath)
 		if err != nil {
 			if os.IsNotExist(err) {

@@ -57,6 +57,56 @@ func TestCompileClassSassProvidesCornerRadiusMixins(t *testing.T) {
 	}
 }
 
+func TestPackageSassSrcIncludesExplicitEntryFiles(t *testing.T) {
+	binary := os.Getenv("SASS")
+	if binary == "" {
+		binary = "sass"
+	}
+	if _, err := exec.LookPath(binary); err != nil {
+		t.Skip("Dart Sass is not installed")
+	}
+	root := makeFixture(t, map[string]string{
+		"pkg/package.json":          "{}",
+		"pkg/sass/src/all.scss":     `@import "../etc/colors"; .package-entry { color: $package-color; }`,
+		"pkg/sass/etc/_colors.scss": `$package-color: #246;`,
+		"pkg/sass/src/Unused.scss":  `.unused { color: red; }`,
+	})
+	pkg := &sdkPackage{root: filepath.Join(root, "pkg")}
+	pkg.manifest.Sencha.Name = "sample-package"
+	pkg.manifest.Sencha.Sass.Src = pathList{
+		"${package.dir}/sass/src",
+		"${package.dir}/sass/src/all.scss",
+	}
+	roots, rootWarnings, err := expandPackageClassSassRoots(pkg, "classic", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(rootWarnings) != 0 || len(roots) != 2 || !roots[1].EntryFile {
+		t.Fatalf("package Sass roots = %#v, warnings = %#v, want directory plus explicit entry", roots, rootWarnings)
+	}
+	sources, watchPaths, warnings, err := resolvePackageClassSassSources(root, roots, nil, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	wantEntry, err := filepath.Abs(filepath.Join(root, "pkg", "sass", "src", "all.scss"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(sources, []string{wantEntry}) {
+		t.Fatalf("package Sass sources = %#v, want explicit entry %s", sources, wantEntry)
+	}
+	if !reflect.DeepEqual(watchPaths, []string{wantEntry}) || len(warnings) != 0 {
+		t.Fatalf("package Sass watch paths = %#v, warnings = %#v", watchPaths, warnings)
+	}
+	css, _, err := compileClassSass(root, sources, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Contains(css, []byte(".package-entry")) || !bytes.Contains(css, []byte("color: #246")) {
+		t.Fatalf("compiled package Sass entry = %s", css)
+	}
+}
+
 func TestThemeBaseFunctionSourcesQualifyAsSassHelpers(t *testing.T) {
 	binary := os.Getenv("SASS")
 	if binary == "" {

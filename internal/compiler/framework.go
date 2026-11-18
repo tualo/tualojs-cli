@@ -59,6 +59,7 @@ type packageSassSourceRoot struct {
 	SassPath  string
 	ClassPath string
 	Package   string
+	EntryFile bool
 }
 
 type packageSassEtcRoot struct {
