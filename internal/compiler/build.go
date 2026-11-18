@@ -247,6 +247,10 @@ func BuildWithTargetOptions(appDir, outputDir, selectedToolkit, selectedPlatform
 		return BuildResult{}, err
 	}
 	sassMixins["border-radius"] = true
+	sassMixins["border-top-left-radius"] = true
+	sassMixins["border-top-right-radius"] = true
+	sassMixins["border-bottom-right-radius"] = true
+	sassMixins["border-bottom-left-radius"] = true
 	sassMixins["opacity"] = true
 	sassMixins["user-select"] = true
 	sassMixins["box-shadow"] = true

@@ -699,6 +699,14 @@ func resolvePackageSassVariables(appRoot string, roots []string, initialVariable
 				candidateNulls[name] = isNull
 			}
 			nullAliases, onlyAliases := sassVariableNullAliases(source.data, candidateNulls)
+			for name := range source.definitions {
+				if !sourceNulls[name] && !nullAliases[name] {
+					delete(candidateNulls, name)
+				}
+			}
+			for name, isNull := range nullAliases {
+				candidateNulls[name] = isNull
+			}
 			if name := sassVariableNullReference(source.data, candidateNulls); name != "" && !onlyAliases {
 				progress = true
 				warnings = append(warnings, fmt.Sprintf("skipped package Sass var source %s: references $%s whose Fashion value is null", source.path, name))
@@ -1278,6 +1286,7 @@ func inlineSassImports(appRoot, importer string, source []byte, availableVariabl
 	var expand func(string, []byte) ([]byte, error)
 	expand = func(current string, data []byte) ([]byte, error) {
 		data = stripFashionThemeBackgroundImageFunction(data)
+		data, _ = normalizeFashionNestedMixins(data)
 		data = normalizeFashionDuplicateMixinArguments(data)
 		data = normalizeFashionScopedFunctions(data)
 		data = normalizeFashionButtonColorFunctionDefaults(data)
@@ -1374,6 +1383,7 @@ func inlineSassImports(appRoot, importer string, source []byte, availableVariabl
 					if normalized, changed, reason := normalizeFashionDynamic(imported); reason == "" && changed {
 						imported = normalized
 					}
+					imported, _ = normalizeFashionNestedMixins(imported)
 					if sassSourceHasNestedMixin(imported) {
 						warnings = append(warnings, fmt.Sprintf("skipped Sass import %q in %s: nested Sass mixins are unsupported", path, current))
 						dropDirective = true
@@ -1497,6 +1507,243 @@ func sassSourceHasNestedMixin(source []byte) bool {
 		}
 	}
 	return false
+}
+
+func normalizeFashionNestedMixins(source []byte) ([]byte, bool) {
+	var helpers [][]byte
+	for {
+		depth := 0
+		start, end := -1, -1
+		lines := strings.SplitAfter(string(source), "\n")
+		lineStart := 0
+		for _, line := range lines {
+			if depth > 0 && sassMixinDefinition.MatchString(line) {
+				brace := strings.IndexByte(line, '{')
+				if brace >= 0 {
+					open := lineStart + brace
+					close := sassBlockEnd(source, open)
+					if close >= 0 {
+						start, end = lineStart, close+1
+					}
+				}
+				break
+			}
+			depth += strings.Count(line, "{") - strings.Count(line, "}")
+			if depth < 0 {
+				depth = 0
+			}
+			lineStart += len(line)
+		}
+		if start < 0 || end < 0 {
+			break
+		}
+		definition := bytes.TrimSpace(source[start:end])
+		captures, canHoist := fashionNestedMixinCaptures(source, definition)
+		if !canHoist {
+			break
+		}
+		nameMatch := sassMixinDefinition.FindSubmatch(definition)
+		if len(nameMatch) < 2 {
+			break
+		}
+		name := string(nameMatch[1])
+		if len(captures) > 0 {
+			open := bytes.IndexByte(definition, '(')
+			close := sassMatchingParen(definition, open)
+			if open < 0 || close < 0 {
+				break
+			}
+			var signature strings.Builder
+			signature.Write(definition[:close])
+			if strings.TrimSpace(string(definition[open+1:close])) != "" {
+				signature.WriteString(", ")
+			}
+			signature.WriteString(strings.Join(captures, ", "))
+			signature.Write(definition[close:])
+			definition = []byte(signature.String())
+			source = appendFashionMixinCaptureArguments(source, name, captures)
+		}
+		helper := append(append([]byte(nil), definition...), '\n')
+		helpers = append(helpers, helper)
+		lineEnd := end
+		if lineEnd < len(source) && source[lineEnd] == '\n' {
+			lineEnd++
+		}
+		source = append(append([]byte(nil), source[:start]...), source[lineEnd:]...)
+	}
+	if len(helpers) == 0 {
+		return source, false
+	}
+	for index := len(helpers) - 1; index >= 0; index-- {
+		source = append(helpers[index], source...)
+	}
+	return source, true
+}
+
+func fashionNestedMixinCaptures(source, definition []byte) ([]string, bool) {
+	match := sassMixinDefinition.FindSubmatch(definition)
+	if len(match) < 2 {
+		return nil, false
+	}
+	name := string(match[1])
+	definedAtTopLevel := false
+	walkTopLevelSassLines(source, func(line string) {
+		if definition := sassMixinDefinition.FindSubmatch([]byte(line)); len(definition) > 1 && string(definition[1]) == name {
+			definedAtTopLevel = true
+		}
+	})
+	if definedAtTopLevel {
+		return nil, false
+	}
+	open := bytes.IndexByte(definition, '(')
+	close := sassMatchingParen(definition, open)
+	if open < 0 || close < open {
+		return nil, false
+	}
+	bound := make(map[string]bool)
+	for _, parameter := range sassVariableReference.FindAllSubmatch(definition[open+1:close], -1) {
+		bound[string(parameter[1])] = true
+	}
+	for _, variable := range sassVariableDeclaration.FindAllSubmatch(definition, -1) {
+		bound[string(variable[1])] = true
+	}
+	var captures []string
+	seen := make(map[string]bool)
+	for _, variable := range sassVariableReference.FindAllSubmatch(definition, -1) {
+		name := string(variable[1])
+		if !bound[name] && !seen[name] {
+			captures = append(captures, "$"+name)
+			seen[name] = true
+		}
+	}
+	return captures, true
+}
+
+func appendFashionMixinCaptureArguments(source []byte, name string, captures []string) []byte {
+	needle := []byte("@include")
+	var output bytes.Buffer
+	previous := 0
+	for search := 0; search < len(source); {
+		include := bytes.Index(source[search:], needle)
+		if include < 0 {
+			break
+		}
+		include += search
+		nameStart := include + len(needle)
+		for nameStart < len(source) && (source[nameStart] == ' ' || source[nameStart] == '\t' || source[nameStart] == '\n' || source[nameStart] == '\r') {
+			nameStart++
+		}
+		nameEnd := nameStart
+		for nameEnd < len(source) && (source[nameEnd] == '-' || source[nameEnd] == '_' || source[nameEnd] >= 'a' && source[nameEnd] <= 'z' || source[nameEnd] >= 'A' && source[nameEnd] <= 'Z' || source[nameEnd] >= '0' && source[nameEnd] <= '9') {
+			nameEnd++
+		}
+		if string(source[nameStart:nameEnd]) != name {
+			search = nameEnd
+			continue
+		}
+		output.Write(source[previous:nameEnd])
+		arguments := strings.Join(captures, ", ")
+		cursor := nameEnd
+		for cursor < len(source) && (source[cursor] == ' ' || source[cursor] == '\t' || source[cursor] == '\n' || source[cursor] == '\r') {
+			cursor++
+		}
+		if cursor < len(source) && source[cursor] == '(' {
+			close := sassMatchingParen(source, cursor)
+			if close < 0 {
+				output.Write(source[nameEnd:])
+				return output.Bytes()
+			}
+			output.Write(source[nameEnd : cursor+1])
+			output.Write(source[cursor+1 : close])
+			if strings.TrimSpace(string(source[cursor+1:close])) != "" {
+				output.WriteString(", ")
+			}
+			output.WriteString(arguments)
+			output.WriteByte(')')
+			previous = close + 1
+			search = previous
+		} else {
+			output.WriteByte('(')
+			output.WriteString(arguments)
+			output.WriteByte(')')
+			previous = nameEnd
+			search = nameEnd
+		}
+	}
+	if previous == 0 {
+		return source
+	}
+	output.Write(source[previous:])
+	return output.Bytes()
+}
+
+func sassMatchingParen(source []byte, open int) int {
+	if open < 0 || open >= len(source) || source[open] != '(' {
+		return -1
+	}
+	depth := 0
+	quote := byte(0)
+	escaped := false
+	for index := open; index < len(source); index++ {
+		current := source[index]
+		if quote != 0 {
+			if escaped {
+				escaped = false
+			} else if current == '\\' {
+				escaped = true
+			} else if current == quote {
+				quote = 0
+			}
+			continue
+		}
+		if current == '\'' || current == '"' {
+			quote = current
+			continue
+		}
+		switch current {
+		case '(':
+			depth++
+		case ')':
+			depth--
+			if depth == 0 {
+				return index
+			}
+		}
+	}
+	return -1
+}
+
+func sassBlockEnd(source []byte, open int) int {
+	depth := 0
+	quote := byte(0)
+	escaped := false
+	for index := open; index < len(source); index++ {
+		current := source[index]
+		if quote != 0 {
+			if escaped {
+				escaped = false
+			} else if current == '\\' {
+				escaped = true
+			} else if current == quote {
+				quote = 0
+			}
+			continue
+		}
+		if current == '\'' || current == '"' {
+			quote = current
+			continue
+		}
+		switch current {
+		case '{':
+			depth++
+		case '}':
+			depth--
+			if depth == 0 {
+				return index
+			}
+		}
+	}
+	return -1
 }
 
 func resolveSassImport(appRoot, importer, importPath string) (string, bool, error) {
@@ -1657,6 +1904,22 @@ $output-paths: null !default;
     -webkit-border-radius: $radius;
     border-radius: $radius;
 }
+@mixin border-top-left-radius($radius) {
+    -webkit-border-top-left-radius: $radius;
+    border-top-left-radius: $radius;
+}
+@mixin border-top-right-radius($radius) {
+    -webkit-border-top-right-radius: $radius;
+    border-top-right-radius: $radius;
+}
+@mixin border-bottom-right-radius($radius) {
+    -webkit-border-bottom-right-radius: $radius;
+    border-bottom-right-radius: $radius;
+}
+@mixin border-bottom-left-radius($radius) {
+    -webkit-border-bottom-left-radius: $radius;
+    border-bottom-left-radius: $radius;
+}
 @mixin opacity($opacity) { opacity: $opacity; }
 @mixin user-select($value) {
     -webkit-user-select: $value;
@@ -1716,6 +1979,7 @@ $output-paths: null !default;
 			continue
 		}
 		data = normalizedImages
+		data, nestedMixinChanged := normalizeFashionNestedMixins(data)
 		data = normalizeFashionBoxFunctionDefaults(data)
 		if sassSourceHasNestedMixin(data) {
 			warnings = append(warnings, fmt.Sprintf("skipped Fashion-dependent Sass source %s: nested Sass mixins are unsupported", source))
@@ -1736,7 +2000,7 @@ $output-paths: null !default;
 				continue
 			}
 		}
-		if dynamicChanged || inlineImports[source] || imageChanged {
+		if dynamicChanged || inlineImports[source] || imageChanged || nestedMixinChanged {
 			var importWarnings []string
 			normalized, importWarnings, err = inlineSassImports(appRoot, source, normalized, availableVariables, skipImports)
 			if err != nil {

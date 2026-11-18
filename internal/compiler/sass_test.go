@@ -23,6 +23,40 @@ func TestCompileClassSassReportsMissingDartSass(t *testing.T) {
 	}
 }
 
+func TestCompileClassSassProvidesCornerRadiusMixins(t *testing.T) {
+	binary := os.Getenv("SASS")
+	if binary == "" {
+		binary = "sass"
+	}
+	if _, err := exec.LookPath(binary); err != nil {
+		t.Skip("Dart Sass is not installed")
+	}
+	root := t.TempDir()
+	source := filepath.Join(root, "Main.scss")
+	if err := os.WriteFile(source, []byte(`.rounded {
+    @include border-top-left-radius(4px);
+    @include border-top-right-radius(4px);
+    @include border-bottom-right-radius(4px);
+    @include border-bottom-left-radius(4px);
+}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	css, _, err := compileClassSass(root, []string{source}, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, property := range []string{
+		"border-top-left-radius: 4px",
+		"border-top-right-radius: 4px",
+		"border-bottom-right-radius: 4px",
+		"border-bottom-left-radius: 4px",
+	} {
+		if !bytes.Contains(css, []byte(property)) {
+			t.Errorf("compiled CSS is missing %q: %s", property, css)
+		}
+	}
+}
+
 func TestThemeBaseFunctionSourcesQualifyAsSassHelpers(t *testing.T) {
 	binary := os.Getenv("SASS")
 	if binary == "" {
@@ -188,6 +222,35 @@ func TestNormalizeFashionButtonColorFunctionDefaults(t *testing.T) {
 	}
 }
 
+func TestNormalizeFashionNestedMixins(t *testing.T) {
+	source := []byte(`@mixin tabs($opacity) {
+    @if $legacy {
+        @mixin ie-tab-opacity() {
+            -ms-filter: "alpha(opacity=#{$opacity * 100})";
+        }
+    }
+    .tab {
+        @if $opacity != 1 {
+            @include ie-tab-opacity;
+        }
+    }
+}
+`)
+	normalized, changed := normalizeFashionNestedMixins(source)
+	if !changed || sassSourceHasNestedMixin(normalized) {
+		t.Fatalf("nested Sass mixin was not normalized: %s", normalized)
+	}
+	for _, want := range []string{
+		"@mixin ie-tab-opacity($opacity)",
+		"@include ie-tab-opacity($opacity);",
+		"@mixin tabs($opacity)",
+	} {
+		if !strings.Contains(string(normalized), want) {
+			t.Errorf("normalized Sass is missing %q: %s", want, normalized)
+		}
+	}
+}
+
 func TestResolvePackageSassVariablesOrdersForwardReferences(t *testing.T) {
 	root := makeFixture(t, map[string]string{
 		"theme-child/sass/var/child.scss": `$accent: dynamic($base-color);`,
@@ -249,6 +312,36 @@ func TestResolvePackageSassVariablesSkipsExpressionsDependingOnNull(t *testing.T
 	}
 	if len(warnings) != 1 || !strings.Contains(warnings[0], "Fashion value is null") {
 		t.Fatalf("package Sass warnings = %#v, want null dependency warning", warnings)
+	}
+}
+
+func TestResolvePackageSassVariablesUsesLocalOverrideBeforeNullCheck(t *testing.T) {
+	root := makeFixture(t, map[string]string{
+		"widget/sass/var/tab.scss": `$border-color: dynamic(#246);
+$tab-border-width: dynamic(1px);
+$tab-border-width-focus: dynamic($tab-border-width);`,
+		"theme/sass/var/base.scss": `$border-color: dynamic(null);`,
+	})
+
+	sources, _, variables, warnings, err := resolvePackageSassVariables(root, []string{
+		filepath.Join(root, "widget", "sass", "var"),
+		filepath.Join(root, "theme", "sass", "var"),
+	}, nil, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	wantSources := []string{
+		filepath.Join(root, "widget", "sass", "var", "tab.scss"),
+		filepath.Join(root, "theme", "sass", "var", "base.scss"),
+	}
+	if !reflect.DeepEqual(sources, wantSources) {
+		t.Fatalf("package Sass sources = %#v, want sources including local override %#v", sources, wantSources)
+	}
+	if !variables["tab-border-width-focus"] {
+		t.Fatalf("available variables = %#v, want tab-border-width-focus", variables)
+	}
+	if len(warnings) != 0 {
+		t.Fatalf("package Sass warnings = %#v, want none", warnings)
 	}
 }
 
