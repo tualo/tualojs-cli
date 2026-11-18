@@ -199,6 +199,35 @@ func TestPackageSassSrcIncludesExplicitEntryFiles(t *testing.T) {
 	}
 }
 
+func TestUnsupportedPackageSassSourceAllowsLocalCallableParameters(t *testing.T) {
+	localParameters := []byte(`@function add-if ($value1, $value2) {
+    @if $value1 == null or $value2 == null { @return null; }
+    @return $value1 + $value2;
+}
+@mixin spacing($gap, $color: red) {
+    margin: $gap;
+    color: $color;
+}
+`)
+	if reason := unsupportedPackageSassSource(localParameters, nil); reason != "" {
+		t.Fatalf("local Sass parameters were treated as missing package variables: %s", reason)
+	}
+	withMissingGlobal := []byte(`@function add-if ($value1) {
+    @return $value1 + $not-loaded;
+}
+`)
+	if reason := unsupportedPackageSassSource(withMissingGlobal, nil); !strings.Contains(reason, "$not-loaded") {
+		t.Fatalf("missing global Sass variable reason = %q, want $not-loaded", reason)
+	}
+	withMissingDefault := []byte(`@mixin spacing($gap: $not-loaded) {
+    margin: $gap;
+}
+`)
+	if reason := unsupportedPackageSassSource(withMissingDefault, nil); !strings.Contains(reason, "$not-loaded") {
+		t.Fatalf("missing Sass parameter default reason = %q, want $not-loaded", reason)
+	}
+}
+
 func TestNormalizeFashionResourcePaths(t *testing.T) {
 	source := []byte(`$font-path: get-resource-path('fonts');
 $shared-path: get-resource-path("icons", "shared");

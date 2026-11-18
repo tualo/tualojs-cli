@@ -21,6 +21,8 @@ var sassMixinDefinition = regexp.MustCompile(`(?m)^[\t ]*@mixin[\t ]+([a-zA-Z_-]
 var sassMixinInclude = regexp.MustCompile(`@include[\t ]+([a-zA-Z_-][a-zA-Z0-9_-]*)`)
 var sassIncludeVariableReference = regexp.MustCompile(`\$(include-[a-zA-Z0-9_-]+)`)
 var sassFunctionDefinition = regexp.MustCompile(`(?m)^[\t ]*@function[\t ]+([a-zA-Z_-][a-zA-Z0-9_-]*)`)
+var sassScopedCallableDefinition = regexp.MustCompile(`(?m)^[\t ]*@(function|mixin)[\t ]+[a-zA-Z_-][a-zA-Z0-9_-]*[\t ]*\(`)
+var sassParameterName = regexp.MustCompile(`^[\t ]*\$([a-zA-Z_][a-zA-Z0-9_-]*)`)
 var themeBackgroundImageFunctionDefinition = regexp.MustCompile(`(?m)^[\t ]*@function[\t ]+theme-background-image[\t ]*\(`)
 var fashionImageFunctionDefinition = regexp.MustCompile(`(?m)^[\t ]*@function[\t ]+(?:theme-background-image|get-image-url)[\t ]*\(`)
 var themeBackgroundImageCall = regexp.MustCompile(`theme-background-image[\t ]*\(`)
@@ -1002,6 +1004,24 @@ func sassVariableNames(source []byte) map[string]bool {
 	return variables
 }
 
+func sassScopedParameterNames(source []byte) map[string]bool {
+	parameters := make(map[string]bool)
+	for _, definition := range sassScopedCallableDefinition.FindAllStringIndex(string(source), -1) {
+		open := definition[1] - 1
+		close := sassMatchingParen(source, open)
+		if close < 0 {
+			continue
+		}
+		for _, parameter := range splitTopLevelSassArguments(string(source[open+1 : close])) {
+			match := sassParameterName.FindStringSubmatch(parameter)
+			if len(match) > 1 {
+				parameters[match[1]] = true
+			}
+		}
+	}
+	return parameters
+}
+
 func walkTopLevelSassLines(source []byte, visit func(string)) {
 	walkSassLinesWithDepth(source, func(line string, braceDepth, parenDepth int) {
 		if braceDepth == 0 && parenDepth == 0 {
@@ -1417,6 +1437,9 @@ func unsupportedPackageSassSource(source []byte, availableVariables map[string]b
 		return "package Sass resource URLs are not yet rebased"
 	}
 	definitions := sassVariableNames(source)
+	for name := range sassScopedParameterNames(source) {
+		definitions[name] = true
+	}
 	for _, match := range sassVariableReference.FindAllSubmatch(source, -1) {
 		name := string(match[1])
 		if !definitions[name] && !availableVariables[name] {
