@@ -42,6 +42,8 @@ Die Implementierung startet mit einem kleinen, durch Tests abgesicherten vertika
 24. **CSS-Basis-Mixins** (`docs/24-css-basis-mixins.md`): gebräuchliche Sass-Mixins wie `user-select` und `box-shadow` für Framework-Class-SCSS bereitstellen.
 25. **CSS-Transform-Mixins** (`docs/25-css-transform-mixins.md`): einfache `rotate()`- und `scale()`-Mixin-Aufrufe in Framework-SCSS kompilieren.
 26. **Mehrzeilige Fashion-Variablen** (`docs/26-mehrzeilige-dynamic-werte.md`): balancierte mehrzeilige `dynamic()`-Zuweisungen, insbesondere Sass-Maps, normalisieren.
+27. **Fashion-Null-Aliase** (`docs/27-fashion-null-aliase.md`): direkte Theme-Variablenreferenzen auf `null`-Werte im Sass-Kontext erhalten.
+28. **Fashion-Dart-Sass-Kompatibilität** (`docs/28-fashion-dart-sass-kompatibilitaet.md`): ausgewählte Fashion-Syntax aus Modern-Theme-Sass vor der Kompilierung in Dart-Sass-kompatible Funktions- und Mixin-Aufrufe überführen.
 
 ## Architekturleitplanken
 

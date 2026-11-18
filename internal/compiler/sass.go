@@ -27,6 +27,8 @@ var themeBackgroundImageCall = regexp.MustCompile(`theme-background-image[\t ]*\
 var themeBackgroundImageLiteralCall = regexp.MustCompile(`theme-background-image\([\t ]*(?:'([^']*)'|"([^"]*)")[\t ]*(?:,[\t ]*(?:'([^']*)'|"([^"]*)"))?(?:,[\t ]*(?:true|false))?[\t ]*\)`)
 var fashionResourcePathAssignment = regexp.MustCompile(`(?m)^[\t ]*\$[a-zA-Z_][a-zA-Z0-9_-]*[\t ]*:[\t ]*get-resource-path[\t ]*\(`)
 var fashionBoxFunctionArgs = regexp.MustCompile(`(?m)(@function[\t ]+(?:top|right|bottom|left|vertical|horizontal|boxmax|boxmin)[\t ]*\([\t ]*\$box[\t ]*,[\t ]*\$fallbackBox)([\t ]*\))`)
+var fashionButtonColorFunctionArgs = regexp.MustCompile(`(?m)(@function[\t ]+button-(?:hovered|pressed|focused|disabled)-color[\t ]*\([^,()]+,[\t ]*)(\$color)([\t ]*\))`)
+var fashionDuplicateMixinArgument = regexp.MustCompile(`(\$[a-zA-Z_][a-zA-Z0-9_-]*)[\t ]+(\$[a-zA-Z_][a-zA-Z0-9_-]*)`)
 var fashionDynamicAssignment = regexp.MustCompile(`^[\t ]*\$[a-zA-Z_][a-zA-Z0-9_-]*[\t ]*:[\t ]*dynamic\(`)
 var fashionDynamicSuffix = regexp.MustCompile(`^[\t ]*(?:!default[\t ]*)?;?[\t ]*(?://.*)?$`)
 
@@ -523,6 +525,97 @@ func normalizeFashionBoxFunctionDefaults(source []byte) []byte {
 	return fashionBoxFunctionArgs.ReplaceAll(source, []byte("${1}: null${2}"))
 }
 
+func normalizeFashionButtonColorFunctionDefaults(source []byte) []byte {
+	return fashionButtonColorFunctionArgs.ReplaceAll(source, []byte("${1}${2}: null${3}"))
+}
+
+func normalizeFashionDuplicateMixinArguments(source []byte) []byte {
+	matches := fashionDuplicateMixinArgument.FindAllSubmatchIndex(source, -1)
+	if len(matches) == 0 {
+		return source
+	}
+	var output strings.Builder
+	previous := 0
+	for _, match := range matches {
+		first := string(source[match[2]:match[3]])
+		second := string(source[match[4]:match[5]])
+		prefix := source[:match[0]]
+		include := bytes.LastIndex(prefix, []byte("@include"))
+		close := bytes.LastIndexByte(prefix, ')')
+		if first != second || include < 0 || include < close || !bytes.Contains(prefix[include:], []byte("(")) {
+			continue
+		}
+		output.Write(source[previous:match[0]])
+		output.WriteString(first)
+		output.WriteString(": ")
+		output.WriteString(second)
+		previous = match[1]
+	}
+	if previous == 0 {
+		return source
+	}
+	output.Write(source[previous:])
+	return []byte(output.String())
+}
+
+func removeFashionScopedFunction(source []byte, declaration string) ([]byte, bool) {
+	start := bytes.Index(source, []byte(declaration))
+	if start < 0 {
+		return source, false
+	}
+	brace := bytes.IndexByte(source[start:], '{')
+	if brace < 0 {
+		return source, false
+	}
+	brace += start
+	depth := 0
+	end := -1
+	for index := brace; index < len(source); index++ {
+		switch source[index] {
+		case '{':
+			depth++
+		case '}':
+			depth--
+			if depth == 0 {
+				end = index + 1
+				break
+			}
+		}
+		if end >= 0 {
+			break
+		}
+	}
+	if end < 0 {
+		return source, false
+	}
+	lineStart := bytes.LastIndexByte(source[:start], '\n') + 1
+	lineEnd := end
+	if lineEnd < len(source) && source[lineEnd] == '\n' {
+		lineEnd++
+	}
+	return append(append([]byte(nil), source[:lineStart]...), source[lineEnd:]...), true
+}
+
+func normalizeFashionScopedFunctions(source []byte) []byte {
+	var helpers [][]byte
+	if normalized, found := removeFashionScopedFunction(source, "@function calcPos($margin)"); found {
+		source = normalized
+		source = bytes.ReplaceAll(source, []byte("calcPos(right($pane-margin))"), []byte("fashion-calc-pos(right($pane-margin), $cell-width)"))
+		source = bytes.ReplaceAll(source, []byte("calcPos(left($pane-margin))"), []byte("fashion-calc-pos(left($pane-margin), $cell-width)"))
+		helpers = append(helpers, []byte("@function fashion-calc-pos($margin, $cell-width) {\n    $sum: ceil($cell-width / 2) + $margin;\n    @if $sum != null {\n        @return calc(#{$sum} - 1em);\n    } @else {\n        @return 1em;\n    }\n}\n"))
+	}
+	if normalized, found := removeFashionScopedFunction(source, "@function calcOffset($padding)"); found {
+		source = normalized
+		source = bytes.ReplaceAll(source, []byte("calcOffset($cell-spacing)"), []byte("fashion-calc-offset($cell-spacing, $focused-cell-outline-offset)"))
+		source = bytes.ReplaceAll(source, []byte("calcOffset($cell-spacing-big)"), []byte("fashion-calc-offset($cell-spacing-big, $focused-cell-outline-offset)"))
+		helpers = append(helpers, []byte("@function fashion-calc-offset($padding, $focused-cell-outline-offset) {\n    $ret: 0;\n    $offset: $focused-cell-outline-offset;\n    @if $offset != null {\n        @if $padding == null {\n            $padding: 0;\n        }\n        $ret: (-$padding - 1) + $offset;\n    }\n    @return $ret;\n}\n"))
+	}
+	for index := len(helpers) - 1; index >= 0; index-- {
+		source = append(helpers[index], source...)
+	}
+	return source
+}
+
 func resolvePackageSassVariables(appRoot string, roots []string, initialVariables map[string]bool, ignore []*regexp.Regexp) ([]string, []string, map[string]bool, []string, error) {
 	available := make(map[string]bool, len(initialVariables))
 	for name := range initialVariables {
@@ -605,7 +698,8 @@ func resolvePackageSassVariables(appRoot string, roots []string, initialVariable
 			for name, isNull := range sourceNulls {
 				candidateNulls[name] = isNull
 			}
-			if name := sassVariableNullReference(source.data, candidateNulls); name != "" {
+			nullAliases, onlyAliases := sassVariableNullAliases(source.data, candidateNulls)
+			if name := sassVariableNullReference(source.data, candidateNulls); name != "" && !onlyAliases {
 				progress = true
 				warnings = append(warnings, fmt.Sprintf("skipped package Sass var source %s: references $%s whose Fashion value is null", source.path, name))
 				continue
@@ -625,6 +719,9 @@ func resolvePackageSassVariables(appRoot string, roots []string, initialVariable
 				available[name] = true
 			}
 			for name, isNull := range sourceNulls {
+				nullVariables[name] = isNull
+			}
+			for name, isNull := range nullAliases {
 				nullVariables[name] = isNull
 			}
 		}
@@ -686,6 +783,45 @@ func sassVariableNullReference(source []byte, nullVariables map[string]bool) str
 		}
 	})
 	return missing
+}
+
+func sassVariableNullAliases(source []byte, nullVariables map[string]bool) (map[string]bool, bool) {
+	aliases := make(map[string]bool)
+	if normalized, _, reason := normalizeFashionDynamic(source); reason == "" {
+		source = normalized
+	}
+	valid := true
+	walkTopLevelSassLines(source, func(line string) {
+		if !valid {
+			return
+		}
+		declaration := sassVariableDeclaration.FindStringSubmatch(line)
+		if declaration == nil {
+			return
+		}
+		colon := strings.IndexByte(line, ':')
+		if colon < 0 {
+			return
+		}
+		value := strings.TrimSpace(line[colon+1:])
+		if comment := strings.Index(value, "//"); comment >= 0 {
+			value = strings.TrimSpace(value[:comment])
+		}
+		value = strings.TrimSpace(strings.TrimSuffix(value, ";"))
+		value = strings.TrimSpace(strings.TrimSuffix(value, "!default"))
+		for _, match := range sassVariableReference.FindAllSubmatch([]byte(value), -1) {
+			name := string(match[1])
+			if !nullVariables[name] {
+				continue
+			}
+			if value != "$"+name {
+				valid = false
+				return
+			}
+			aliases[string(declaration[1])] = true
+		}
+	})
+	return aliases, valid
 }
 
 func collectSassVariableNames(sources []string) (map[string]bool, error) {
@@ -1142,6 +1278,9 @@ func inlineSassImports(appRoot, importer string, source []byte, availableVariabl
 	var expand func(string, []byte) ([]byte, error)
 	expand = func(current string, data []byte) ([]byte, error) {
 		data = stripFashionThemeBackgroundImageFunction(data)
+		data = normalizeFashionDuplicateMixinArguments(data)
+		data = normalizeFashionScopedFunctions(data)
+		data = normalizeFashionButtonColorFunctionDefaults(data)
 		data, _, imageReason := normalizeThemeBackgroundImages(current, data)
 		if imageReason != "" {
 			warnings = append(warnings, fmt.Sprintf("skipped Sass source %s: %s", current, imageReason))

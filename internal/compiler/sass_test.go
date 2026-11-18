@@ -112,6 +112,82 @@ $palette: dynamic((
 	}
 }
 
+func TestNormalizeFashionDuplicateMixinArgument(t *testing.T) {
+	source := []byte(`@include border-management(
+    $border-radius: $border-radius,
+    $border-radius-big $border-radius-big
+);
+`)
+	want := `@include border-management(
+    $border-radius: $border-radius,
+    $border-radius-big: $border-radius-big
+);
+`
+	if got := string(normalizeFashionDuplicateMixinArguments(source)); got != want {
+		t.Fatalf("normalized Sass include = %q, want %q", got, want)
+	}
+}
+
+func TestNormalizeFashionScopedFunctions(t *testing.T) {
+	source := []byte(`@mixin datepanel-ui {
+    .navigation-tools {
+        @function calcPos($margin) {
+            $sum: ceil($cell-width / 2) + $margin;
+            @if $sum != null {
+                @return calc(#{$sum} - 1em);
+            } @else {
+                @return 1em;
+            }
+        }
+        right: calcPos(right($pane-margin));
+        left: calcPos(left($pane-margin));
+    }
+    .cell {
+        @function calcOffset($padding) {
+            $ret: 0;
+            $offset: $focused-cell-outline-offset;
+            @if $offset != null {
+                @if $padding == null { $padding: 0; }
+                $ret: (-$padding - 1) + $offset;
+            }
+            @return $ret;
+        }
+        outline-offset: calcOffset($cell-spacing);
+    }
+}
+`)
+	got := string(normalizeFashionScopedFunctions(source))
+	for _, want := range []string{
+		"@function fashion-calc-pos($margin, $cell-width)",
+		"right: fashion-calc-pos(right($pane-margin), $cell-width);",
+		"left: fashion-calc-pos(left($pane-margin), $cell-width);",
+		"@function fashion-calc-offset($padding, $focused-cell-outline-offset)",
+		"outline-offset: fashion-calc-offset($cell-spacing, $focused-cell-outline-offset);",
+		"@mixin datepanel-ui {",
+	} {
+		if !strings.Contains(got, want) {
+			t.Errorf("normalized Sass is missing %q: %s", want, got)
+		}
+	}
+	if strings.Contains(got, "@function calcPos") || strings.Contains(got, "@function calcOffset") {
+		t.Fatalf("nested Fashion function remained in Sass: %s", got)
+	}
+}
+
+func TestNormalizeFashionButtonColorFunctionDefaults(t *testing.T) {
+	source := []byte(`@function button-disabled-color($background-color, $color) {
+    @return button-color($background-color);
+}
+`)
+	want := `@function button-disabled-color($background-color, $color: null) {
+    @return button-color($background-color);
+}
+`
+	if got := string(normalizeFashionButtonColorFunctionDefaults(source)); got != want {
+		t.Fatalf("normalized button color function = %q, want %q", got, want)
+	}
+}
+
 func TestResolvePackageSassVariablesOrdersForwardReferences(t *testing.T) {
 	root := makeFixture(t, map[string]string{
 		"theme-child/sass/var/child.scss": `$accent: dynamic($base-color);`,
@@ -150,6 +226,7 @@ func TestResolvePackageSassVariablesOrdersForwardReferences(t *testing.T) {
 func TestResolvePackageSassVariablesSkipsExpressionsDependingOnNull(t *testing.T) {
 	root := makeFixture(t, map[string]string{
 		"widget/sass/var/derived.scss": `$lighter-color: dynamic(darken($border-color, 10%));`,
+		"widget/sass/var/alias.scss":   `$border-alias: dynamic($border-color);`,
 		"theme/sass/var/theme.scss":    `$border-color: dynamic(null);`,
 	})
 
@@ -160,12 +237,15 @@ func TestResolvePackageSassVariablesSkipsExpressionsDependingOnNull(t *testing.T
 	if err != nil {
 		t.Fatal(err)
 	}
-	wantSources := []string{filepath.Join(root, "theme", "sass", "var", "theme.scss")}
+	wantSources := []string{
+		filepath.Join(root, "theme", "sass", "var", "theme.scss"),
+		filepath.Join(root, "widget", "sass", "var", "alias.scss"),
+	}
 	if !reflect.DeepEqual(sources, wantSources) {
 		t.Fatalf("package Sass sources = %#v, want null source only %#v", sources, wantSources)
 	}
-	if !variables["border-color"] || variables["lighter-color"] {
-		t.Fatalf("available variables = %#v, want only border-color", variables)
+	if !variables["border-color"] || !variables["border-alias"] || variables["lighter-color"] {
+		t.Fatalf("available variables = %#v, want border-color alias but no derived lighter-color", variables)
 	}
 	if len(warnings) != 1 || !strings.Contains(warnings[0], "Fashion value is null") {
 		t.Fatalf("package Sass warnings = %#v, want null dependency warning", warnings)
