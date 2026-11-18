@@ -1471,6 +1471,14 @@ $output-paths: null !default;
     -webkit-box-shadow: $shadows;
     box-shadow: $shadows;
 }
+@mixin rotate($angle) {
+    -webkit-transform: rotate($angle);
+    transform: rotate($angle);
+}
+@mixin scale($factor) {
+    -webkit-transform: scale($factor);
+    transform: scale($factor);
+}
 `)
 	entry.WriteString(`@function parsebox($box, $index) {
     $length: length($box);

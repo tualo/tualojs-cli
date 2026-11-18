@@ -40,6 +40,7 @@ Die Implementierung startet mit einem kleinen, durch Tests abgesicherten vertika
 22. **SDK-Root-Sass-Kontext** (`docs/22-sdk-root-sass.md`): `sass.etc`, `sass.var` und `sass.src` aus dem Ext-SDK-Root-Manifest in die Compiler-Pipeline einbeziehen.
 23. **Theme-Bildpfade** (`docs/23-theme-background-images.md`): einfache `theme-background-image()`-Aufrufe auf kopierte Package-Bilder unter `resources/shared` abbilden.
 24. **CSS-Basis-Mixins** (`docs/24-css-basis-mixins.md`): gebräuchliche Sass-Mixins wie `user-select` und `box-shadow` für Framework-Class-SCSS bereitstellen.
+25. **CSS-Transform-Mixins** (`docs/25-css-transform-mixins.md`): einfache `rotate()`- und `scale()`-Mixin-Aufrufe in Framework-SCSS kompilieren.
 
 ## Architekturleitplanken
 

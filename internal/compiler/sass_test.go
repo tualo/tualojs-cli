@@ -293,7 +293,7 @@ func TestBuildLoadsFrameworkPackageClassSass(t *testing.T) {
 		"sdk/classic/classic/package.json":      `{"version":"8.0.0.43","sencha":{"name":"classic","requires":["core"],"classpath":"${package.dir}/src"}}`,
 		"sdk/packages/core/sass/etc/all.scss":   "$prefix: dynamic('x-');",
 		"sdk/packages/core/src/Panel.js":        `Ext.define('Ext.Panel', {});`,
-		"sdk/packages/core/sass/src/Panel.scss": `.#{$prefix}framework-panel { color: #246; }`,
+		"sdk/packages/core/sass/src/Panel.scss": `.#{$prefix}framework-panel { @include rotate(15deg); @include scale(1.1); color: #246; }`,
 		"app.js":                                `Ext.application({name: 'Example'});`,
 		"app/Empty.js":                          "",
 	})
@@ -309,7 +309,7 @@ func TestBuildLoadsFrameworkPackageClassSass(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(string(css), ".x-framework-panel") || !strings.Contains(string(css), "color: #246") {
+	if !strings.Contains(string(css), ".x-framework-panel") || !strings.Contains(string(css), "-webkit-transform: rotate(15deg)") || !strings.Contains(string(css), "transform: scale(1.1)") || !strings.Contains(string(css), "color: #246") {
 		t.Fatalf("compiled framework Sass = %s", css)
 	}
 	for _, path := range []string{
