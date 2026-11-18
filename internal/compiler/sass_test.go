@@ -599,6 +599,40 @@ func TestResolvePackageSassVariablesSkipsExpressionsDependingOnNull(t *testing.T
 	}
 }
 
+func TestResolvePackageSassVariablesKeepsNullAliasesAndOrFallbacks(t *testing.T) {
+	root := makeFixture(t, map[string]string{
+		"widget/sass/var/colors.scss": `$border-alias: dynamic($border-color);
+$fallback-color: dynamic($border-color or #246);`,
+		"theme/sass/var/base.scss": `$border-color: dynamic(null);`,
+		"app/Main.scss":            `.widget { color: $fallback-color; }`,
+	})
+
+	sources, _, variables, warnings, err := resolvePackageSassVariables(root, []string{
+		filepath.Join(root, "widget", "sass", "var"),
+		filepath.Join(root, "theme", "sass", "var"),
+	}, nil, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	wantSources := []string{
+		filepath.Join(root, "theme", "sass", "var", "base.scss"),
+		filepath.Join(root, "widget", "sass", "var", "colors.scss"),
+	}
+	if !reflect.DeepEqual(sources, wantSources) {
+		t.Fatalf("package Sass sources = %#v, want alias and fallback source after base", sources)
+	}
+	if !variables["border-alias"] || !variables["fallback-color"] || len(warnings) != 0 {
+		t.Fatalf("available variables = %#v, warnings = %#v", variables, warnings)
+	}
+	css, _, err := compileClassSass(root, append(sources, filepath.Join(root, "app", "Main.scss")), false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Contains(css, []byte("color: #246")) {
+		t.Fatalf("compiled Sass with null fallback = %s", css)
+	}
+}
+
 func TestResolvePackageSassVariablesUsesLocalOverrideBeforeNullCheck(t *testing.T) {
 	root := makeFixture(t, map[string]string{
 		"widget/sass/var/tab.scss": `$border-color: dynamic(#246);

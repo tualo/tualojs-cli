@@ -846,7 +846,7 @@ func resolvePackageSassVariables(appRoot string, roots []string, initialVariable
 			for name, isNull := range sourceNulls {
 				candidateNulls[name] = isNull
 			}
-			nullAliases, onlyAliases := sassVariableNullAliases(source.data, candidateNulls)
+			nullAliases, _ := sassVariableNullAliases(source.data, candidateNulls)
 			for name := range source.definitions {
 				if !sourceNulls[name] && !nullAliases[name] {
 					delete(candidateNulls, name)
@@ -855,7 +855,7 @@ func resolvePackageSassVariables(appRoot string, roots []string, initialVariable
 			for name, isNull := range nullAliases {
 				candidateNulls[name] = isNull
 			}
-			if name := sassVariableNullReference(source.data, candidateNulls); name != "" && !onlyAliases {
+			if name := sassVariableNullReference(source.data, candidateNulls, nullAliases); name != "" {
 				progress = true
 				warnings = append(warnings, fmt.Sprintf("skipped package Sass var source %s: references $%s whose Fashion value is null", source.path, name))
 				continue
@@ -917,28 +917,100 @@ func sassVariableNullAssignments(source []byte) map[string]bool {
 	return assignments
 }
 
-func sassVariableNullReference(source []byte, nullVariables map[string]bool) string {
+func sassVariableNullReference(source []byte, nullVariables, nullAliases map[string]bool) string {
+	if normalized, _, reason := normalizeFashionDynamic(source); reason == "" {
+		source = normalized
+	}
 	missing := ""
 	walkTopLevelSassLines(source, func(line string) {
 		if missing != "" {
 			return
 		}
-		if !sassVariableDeclaration.MatchString(line) {
+		declaration := sassVariableDeclaration.FindStringSubmatch(line)
+		if declaration == nil {
 			return
 		}
 		colon := strings.IndexByte(line, ':')
 		if colon < 0 {
 			return
 		}
-		for _, match := range sassVariableReference.FindAllSubmatch([]byte(line[colon+1:]), -1) {
+		if nullAliases[string(declaration[1])] {
+			return
+		}
+		value := strings.TrimSpace(line[colon+1:])
+		if comment := strings.Index(value, "//"); comment >= 0 {
+			value = strings.TrimSpace(value[:comment])
+		}
+		value = strings.TrimSpace(strings.TrimSuffix(value, ";"))
+		value = strings.TrimSpace(strings.TrimSuffix(value, "!default"))
+		for _, match := range sassVariableReference.FindAllSubmatch([]byte(value), -1) {
 			name := string(match[1])
-			if nullVariables[name] {
+			if nullVariables[name] && !sassExpressionHasDirectOrOperand(value, name) {
 				missing = name
 				return
 			}
 		}
 	})
 	return missing
+}
+
+func sassExpressionHasDirectOrOperand(expression, variable string) bool {
+	expression = strings.TrimSpace(expression)
+	for len(expression) >= 2 && expression[0] == '(' && sassMatchingParen([]byte(expression), 0) == len(expression)-1 {
+		expression = strings.TrimSpace(expression[1 : len(expression)-1])
+	}
+	operands := splitTopLevelSassWordOperator(expression, "or")
+	for _, operand := range operands {
+		if strings.TrimSpace(operand) == "$"+variable {
+			return true
+		}
+	}
+	return false
+}
+
+func splitTopLevelSassWordOperator(expression, operator string) []string {
+	var operands []string
+	start := 0
+	parenDepth := 0
+	quote := byte(0)
+	escaped := false
+	for index := 0; index < len(expression); index++ {
+		current := expression[index]
+		if quote != 0 {
+			if escaped {
+				escaped = false
+			} else if current == '\\' {
+				escaped = true
+			} else if current == quote {
+				quote = 0
+			}
+			continue
+		}
+		if current == '\'' || current == '"' {
+			quote = current
+			continue
+		}
+		switch current {
+		case '(':
+			parenDepth++
+		case ')':
+			parenDepth--
+		default:
+			if parenDepth != 0 || !strings.HasPrefix(expression[index:], operator) {
+				continue
+			}
+			beforeSpace := index == 0 || expression[index-1] == ' ' || expression[index-1] == '\t' || expression[index-1] == '\n'
+			after := index + len(operator)
+			afterSpace := after == len(expression) || expression[after] == ' ' || expression[after] == '\t' || expression[after] == '\n'
+			if beforeSpace && afterSpace {
+				operands = append(operands, expression[start:index])
+				start = after
+				index = after - 1
+			}
+		}
+	}
+	operands = append(operands, expression[start:])
+	return operands
 }
 
 func sassVariableNullAliases(source []byte, nullVariables map[string]bool) (map[string]bool, bool) {
