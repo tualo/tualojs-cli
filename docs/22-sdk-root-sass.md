@@ -18,7 +18,8 @@ Das mitgelieferte Ext-SDK enthält globale Sass-Einstiege unter `ext/sass/etc`. 
 ## Prüfungen
 
 - Fake-SDK-Integrationstest prüft SDK-Root-`sass.etc`, einen importierten Variablenpartial, Class-SCSS und Watch-Pfade.
-- Modern-/Classic-Builds des `default`-Realprojekts sowie `go test ./...`, `go vet ./...` und `node --check`.
+- Modern-/Classic-Builds des `default`-Realprojekts; der Classic-Output enthält `.x-btn-pivot-iconbutton-small` aus `extjs-button-small-ui`.
+- `go test ./...`, `go vet ./...` und `node --check`.
 
 ## Grenzen
 
