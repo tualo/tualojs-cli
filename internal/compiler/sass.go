@@ -24,6 +24,7 @@ var sassFunctionDefinition = regexp.MustCompile(`(?m)^[\t ]*@function[\t ]+([a-z
 var sassScopedCallableDefinition = regexp.MustCompile(`(?m)^[\t ]*@(function|mixin)[\t ]+[a-zA-Z_-][a-zA-Z0-9_-]*[\t ]*\(`)
 var sassParameterName = regexp.MustCompile(`^[\t ]*\$([a-zA-Z_][a-zA-Z0-9_-]*)`)
 var fashionJavaScriptFunctionCall = regexp.MustCompile(`(?i)\b(map_merge|intersect[-_]arguments)[\t\r\n ]*\(`)
+var fashionNullSafeBoxRotationAssignment = regexp.MustCompile(`(?i)^(?:rotate90|rotate180|rotate270)[\t ]*\([\t ]*\$([a-zA-Z_][a-zA-Z0-9_-]*)[\t ]*\)$`)
 var themeBackgroundImageFunctionDefinition = regexp.MustCompile(`(?m)^[\t ]*@function[\t ]+theme-background-image[\t ]*\(`)
 var fashionImageFunctionDefinition = regexp.MustCompile(`(?m)^[\t ]*@function[\t ]+(?:theme-background-image|get-image-url)[\t ]*\(`)
 var themeBackgroundImageCall = regexp.MustCompile(`theme-background-image[\t ]*\(`)
@@ -855,7 +856,11 @@ func resolvePackageSassVariables(appRoot string, roots []string, initialVariable
 			for name, isNull := range nullAliases {
 				candidateNulls[name] = isNull
 			}
-			if name := sassVariableNullReference(source.data, candidateNulls, nullAliases); name != "" {
+			nullRotations := sassVariableNullRotationAssignments(source.data, candidateNulls)
+			for name, isNull := range nullRotations {
+				candidateNulls[name] = isNull
+			}
+			if name := sassVariableNullReference(source.data, candidateNulls, nullAliases, nullRotations); name != "" {
 				progress = true
 				warnings = append(warnings, fmt.Sprintf("skipped package Sass var source %s: references $%s whose Fashion value is null", source.path, name))
 				continue
@@ -878,6 +883,9 @@ func resolvePackageSassVariables(appRoot string, roots []string, initialVariable
 				nullVariables[name] = isNull
 			}
 			for name, isNull := range nullAliases {
+				nullVariables[name] = isNull
+			}
+			for name, isNull := range nullRotations {
 				nullVariables[name] = isNull
 			}
 		}
@@ -917,7 +925,7 @@ func sassVariableNullAssignments(source []byte) map[string]bool {
 	return assignments
 }
 
-func sassVariableNullReference(source []byte, nullVariables, nullAliases map[string]bool) string {
+func sassVariableNullReference(source []byte, nullVariables, nullAliases, nullRotations map[string]bool) string {
 	if normalized, _, reason := normalizeFashionDynamic(source); reason == "" {
 		source = normalized
 	}
@@ -934,7 +942,8 @@ func sassVariableNullReference(source []byte, nullVariables, nullAliases map[str
 		if colon < 0 {
 			return
 		}
-		if nullAliases[string(declaration[1])] {
+		variable := string(declaration[1])
+		if nullAliases[variable] || nullRotations[variable] {
 			return
 		}
 		value := strings.TrimSpace(line[colon+1:])
@@ -952,6 +961,34 @@ func sassVariableNullReference(source []byte, nullVariables, nullAliases map[str
 		}
 	})
 	return missing
+}
+
+func sassVariableNullRotationAssignments(source []byte, nullVariables map[string]bool) map[string]bool {
+	assignments := make(map[string]bool)
+	if normalized, _, reason := normalizeFashionDynamic(source); reason == "" {
+		source = normalized
+	}
+	walkTopLevelSassLines(source, func(line string) {
+		declaration := sassVariableDeclaration.FindStringSubmatch(line)
+		if declaration == nil {
+			return
+		}
+		colon := strings.IndexByte(line, ':')
+		if colon < 0 {
+			return
+		}
+		value := strings.TrimSpace(line[colon+1:])
+		if comment := strings.Index(value, "//"); comment >= 0 {
+			value = strings.TrimSpace(value[:comment])
+		}
+		value = strings.TrimSpace(strings.TrimSuffix(value, ";"))
+		value = strings.TrimSpace(strings.TrimSuffix(value, "!default"))
+		match := fashionNullSafeBoxRotationAssignment.FindStringSubmatch(value)
+		if len(match) == 2 && nullVariables[match[1]] {
+			assignments[string(declaration[1])] = true
+		}
+	})
+	return assignments
 }
 
 func sassExpressionHasDirectOrOperand(expression, variable string) bool {
@@ -2366,6 +2403,26 @@ $output-paths: null !default;
         @return nth($box, 3);
     }
     @return nth($box, $index);
+}
+@function rotate90($box) {
+    @if $box == null { @return null; }
+    $length: length($box);
+    @if $length == 1 { @return $box; }
+    @if $length == 2 { @return nth($box, 2) nth($box, 1); }
+    @return parsebox($box, 4) parsebox($box, 1) parsebox($box, 2) parsebox($box, 3);
+}
+@function rotate180($box) {
+    @if $box == null { @return null; }
+    $length: length($box);
+    @if $length == 1 or $length == 2 { @return $box; }
+    @return parsebox($box, 3) parsebox($box, 4) parsebox($box, 1) parsebox($box, 2);
+}
+@function rotate270($box) {
+    @if $box == null { @return null; }
+    $length: length($box);
+    @if $length == 1 { @return $box; }
+    @if $length == 2 { @return nth($box, 2) nth($box, 1); }
+    @return parsebox($box, 2) parsebox($box, 3) parsebox($box, 4) parsebox($box, 1);
 }
 `)
 	contextNames := make([]string, 0, len(contextVariables))

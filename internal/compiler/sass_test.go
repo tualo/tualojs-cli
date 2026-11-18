@@ -57,6 +57,40 @@ func TestCompileClassSassProvidesCornerRadiusMixins(t *testing.T) {
 	}
 }
 
+func TestCompileClassSassProvidesNullSafeBoxRotations(t *testing.T) {
+	binary := os.Getenv("SASS")
+	if binary == "" {
+		binary = "sass"
+	}
+	if _, err := exec.LookPath(binary); err != nil {
+		t.Skip("Dart Sass is not installed")
+	}
+	root := t.TempDir()
+	source := filepath.Join(root, "Main.scss")
+	if err := os.WriteFile(source, []byte(`@if rotate90(null) == null { .null-rotation { display: none; } }
+.box {
+    padding: rotate90(1px 2px 3px 4px);
+    margin: rotate180(1px 2px 3px 4px);
+    border-width: rotate270(1px 2px 3px 4px);
+}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	css, _, err := compileClassSass(root, []string{source}, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{
+		".null-rotation",
+		"padding: 4px 1px 2px 3px",
+		"margin: 3px 4px 1px 2px",
+		"border-width: 2px 3px 4px 1px",
+	} {
+		if !bytes.Contains(css, []byte(want)) {
+			t.Errorf("compiled rotation CSS is missing %q: %s", want, css)
+		}
+	}
+}
+
 func TestCompileClassSassRecognizesCompassCompatibilityImports(t *testing.T) {
 	binary := os.Getenv("SASS")
 	if binary == "" {
@@ -602,7 +636,8 @@ func TestResolvePackageSassVariablesSkipsExpressionsDependingOnNull(t *testing.T
 func TestResolvePackageSassVariablesKeepsNullAliasesAndOrFallbacks(t *testing.T) {
 	root := makeFixture(t, map[string]string{
 		"widget/sass/var/colors.scss": `$border-alias: dynamic($border-color);
-$fallback-color: dynamic($border-color or #246);`,
+$fallback-color: dynamic($border-color or #246);
+$rotated-border: dynamic(rotate90($border-color));`,
 		"theme/sass/var/base.scss": `$border-color: dynamic(null);`,
 		"app/Main.scss":            `.widget { color: $fallback-color; }`,
 	})
@@ -621,7 +656,7 @@ $fallback-color: dynamic($border-color or #246);`,
 	if !reflect.DeepEqual(sources, wantSources) {
 		t.Fatalf("package Sass sources = %#v, want alias and fallback source after base", sources)
 	}
-	if !variables["border-alias"] || !variables["fallback-color"] || len(warnings) != 0 {
+	if !variables["border-alias"] || !variables["fallback-color"] || !variables["rotated-border"] || len(warnings) != 0 {
 		t.Fatalf("available variables = %#v, warnings = %#v", variables, warnings)
 	}
 	css, _, err := compileClassSass(root, append(sources, filepath.Join(root, "app", "Main.scss")), false)

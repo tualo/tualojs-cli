@@ -53,6 +53,7 @@ Die Implementierung startet mit einem kleinen, durch Tests abgesicherten vertika
 35. **Lokale Sass-Parameter** (`docs/35-lokale-sass-parameter.md`): Funktions- und Mixin-Parameter bei der Prüfung auf fehlende Package-Variablen als lokale Namen behandeln.
 36. **Unbenutzte Fashion-JavaScript-Imports** (`docs/36-unbenutzte-fashion-js-imports.md`): `functions.js` ohne Warnung auslassen, wenn die registrierten Funktionen im geladenen Sass nicht verwendet werden.
 37. **Null-Or-Fallback in Sass-Variablen** (`docs/37-null-or-fallback-sass-variablen.md`): sichere Aliase und `or`-Fallbacks bei `null` pro Variablenzuweisung erhalten.
+38. **Fashion-Box-Rotationen** (`docs/38-fashion-box-rotationen.md`): null-sichere `rotate90`/`rotate180`/`rotate270`-Sass-Funktionen und ihre Variablenabhängigkeiten unterstützen.
 
 ## Architekturleitplanken
 
