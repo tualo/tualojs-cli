@@ -23,6 +23,7 @@ var sassIncludeVariableReference = regexp.MustCompile(`\$(include-[a-zA-Z0-9_-]+
 var sassFunctionDefinition = regexp.MustCompile(`(?m)^[\t ]*@function[\t ]+([a-zA-Z_-][a-zA-Z0-9_-]*)`)
 var sassScopedCallableDefinition = regexp.MustCompile(`(?m)^[\t ]*@(function|mixin)[\t ]+[a-zA-Z_-][a-zA-Z0-9_-]*[\t ]*\(`)
 var sassParameterName = regexp.MustCompile(`^[\t ]*\$([a-zA-Z_][a-zA-Z0-9_-]*)`)
+var fashionJavaScriptFunctionCall = regexp.MustCompile(`(?i)\b(map_merge|intersect[-_]arguments)[\t\r\n ]*\(`)
 var themeBackgroundImageFunctionDefinition = regexp.MustCompile(`(?m)^[\t ]*@function[\t ]+theme-background-image[\t ]*\(`)
 var fashionImageFunctionDefinition = regexp.MustCompile(`(?m)^[\t ]*@function[\t ]+(?:theme-background-image|get-image-url)[\t ]*\(`)
 var themeBackgroundImageCall = regexp.MustCompile(`theme-background-image[\t ]*\(`)
@@ -1521,14 +1522,31 @@ func isSassCompassCompatibilityImport(importPath string) bool {
 	}
 }
 
-func isFashionJavaScriptImportShim(importPath string) bool {
+func isFashionJavaScriptImportShim(importPath string, usedFunctions map[string]bool) bool {
 	base := strings.ToLower(filepath.Base(filepath.ToSlash(strings.TrimSpace(importPath))))
 	switch base {
 	case "font-icon.js", "extensions.js":
 		return true
+	case "functions.js":
+		return !usedFunctions["map_merge"] && !usedFunctions["intersect_arguments"]
 	default:
 		return false
 	}
+}
+
+func collectFashionJavaScriptFunctionUses(sources []string) (map[string]bool, error) {
+	used := make(map[string]bool)
+	for _, source := range uniquePaths(sources) {
+		data, err := os.ReadFile(source)
+		if err != nil {
+			return nil, fmt.Errorf("read Sass source for Fashion function usage %s: %w", source, err)
+		}
+		for _, match := range fashionJavaScriptFunctionCall.FindAllSubmatch(data, -1) {
+			name := strings.ReplaceAll(strings.ToLower(string(match[1])), "-", "_")
+			used[name] = true
+		}
+	}
+	return used, nil
 }
 
 func inspectSassImportTree(appRoot, source string, visited map[string]bool) (bool, []string, error) {
@@ -1579,7 +1597,7 @@ func inspectSassImportTree(appRoot, source string, visited map[string]bool) (boo
 	return false, uniquePaths(imports), nil
 }
 
-func inlineSassImports(appRoot, importer string, source []byte, availableVariables map[string]bool, skipImports map[string]bool) ([]byte, []string, error) {
+func inlineSassImports(appRoot, importer string, source []byte, availableVariables map[string]bool, skipImports, usedFashionJSFunctions map[string]bool) ([]byte, []string, error) {
 	var warnings []string
 	active := make(map[string]bool)
 	var expand func(string, []byte) ([]byte, error)
@@ -1646,7 +1664,7 @@ func inlineSassImports(appRoot, importer string, source []byte, availableVariabl
 					continue
 				}
 				if strings.HasSuffix(strings.ToLower(path), ".js") {
-					if isFashionJavaScriptImportShim(path) {
+					if isFashionJavaScriptImportShim(path, usedFashionJSFunctions) {
 						inlinedImport = true
 						valuePrevious = pathMatch[1]
 						continue
@@ -2119,6 +2137,14 @@ func compileClassSassWithInlineImports(appRoot string, sources []string, minify 
 	if len(sources) == 0 {
 		return nil, nil, nil
 	}
+	importedSources, err := resolveSassImportWatchPaths(appRoot, sources)
+	if err != nil {
+		return nil, nil, err
+	}
+	usedFashionJSFunctions, err := collectFashionJavaScriptFunctionUses(append(append([]string{}, sources...), importedSources...))
+	if err != nil {
+		return nil, nil, err
+	}
 	binary := strings.TrimSpace(os.Getenv("SASS"))
 	if binary == "" {
 		binary = "sass"
@@ -2321,7 +2347,7 @@ $output-paths: null !default;
 		}
 		if dynamicChanged || inlineImports[source] || imageChanged || nestedMixinChanged || resourcePathChanged {
 			var importWarnings []string
-			normalized, importWarnings, err = inlineSassImports(appRoot, source, normalized, availableVariables, skipImports)
+			normalized, importWarnings, err = inlineSassImports(appRoot, source, normalized, availableVariables, skipImports, usedFashionJSFunctions)
 			if err != nil {
 				return nil, warnings, fmt.Errorf("normalize Sass imports in %s: %w", source, err)
 			}

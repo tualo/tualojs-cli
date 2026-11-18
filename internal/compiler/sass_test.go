@@ -127,6 +127,7 @@ func TestCompileClassSassUsesKnownFashionJavaScriptShims(t *testing.T) {
 	source := filepath.Join(root, "Main.scss")
 	if err := os.WriteFile(source, []byte(`@import "theme/mixins/font-icon.js";
 @import "ext/sass/etc/extensions.js";
+@import "core/functions.js";
 $icon-args: parseFontIconArgs('A' 16px);
 .icon {
     font-size: nth($icon-args, 2);
@@ -144,6 +145,32 @@ $icon-args: parseFontIconArgs('A' 16px);
 	}
 	if !bytes.Contains(css, []byte("font-size: 16px")) || !bytes.Contains(css, []byte(`url("assets/fonts/icon.woff")`)) {
 		t.Fatalf("compiled Fashion shim CSS = %s", css)
+	}
+}
+
+func TestCollectFashionJavaScriptFunctionUses(t *testing.T) {
+	root := makeFixture(t, map[string]string{
+		"unused.scss": `$sass-map: map-merge((a: 1), (b: 2));`,
+		"used.scss": `$merged: map_merge((a: 1), (b: 2));
+$arguments: intersect-arguments(first-ui, second-ui);`,
+		"alias.scss": `$arguments: intersect_arguments(first-ui, second-ui);`,
+	})
+	used, err := collectFashionJavaScriptFunctionUses([]string{
+		filepath.Join(root, "unused.scss"),
+		filepath.Join(root, "used.scss"),
+		filepath.Join(root, "alias.scss"),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !used["map_merge"] || !used["intersect_arguments"] {
+		t.Fatalf("Fashion JavaScript function uses = %#v, want map_merge and intersect_arguments", used)
+	}
+	if isFashionJavaScriptImportShim("functions.js", used) {
+		t.Fatal("functions.js should remain unsupported when one of its functions is used")
+	}
+	if !isFashionJavaScriptImportShim("functions.js", nil) {
+		t.Fatal("unused functions.js should use the empty-import shim")
 	}
 }
 

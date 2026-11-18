@@ -51,6 +51,7 @@ Die Implementierung startet mit einem kleinen, durch Tests abgesicherten vertika
 33. **Verschachtelte CSS-Imports** (`docs/33-verschachtelte-css-imports.md`): CSS-`@import url(...)` innerhalb von Sass-Mixins unverändert an Dart Sass weitergeben.
 34. **Bekannte Fashion-JavaScript-Sass-Shims** (`docs/34-fashion-javascript-sass-shims.md`): JavaScript-Imports, deren Funktionen bereits im Sass-Prelude nachgebildet sind, ohne Warnung überspringen.
 35. **Lokale Sass-Parameter** (`docs/35-lokale-sass-parameter.md`): Funktions- und Mixin-Parameter bei der Prüfung auf fehlende Package-Variablen als lokale Namen behandeln.
+36. **Unbenutzte Fashion-JavaScript-Imports** (`docs/36-unbenutzte-fashion-js-imports.md`): `functions.js` ohne Warnung auslassen, wenn die registrierten Funktionen im geladenen Sass nicht verwendet werden.
 
 ## Architekturleitplanken
 
