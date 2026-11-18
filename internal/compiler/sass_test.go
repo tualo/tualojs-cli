@@ -115,6 +115,38 @@ func TestCompileClassSassPreservesNestedCSSURLImports(t *testing.T) {
 	}
 }
 
+func TestCompileClassSassUsesKnownFashionJavaScriptShims(t *testing.T) {
+	binary := os.Getenv("SASS")
+	if binary == "" {
+		binary = "sass"
+	}
+	if _, err := exec.LookPath(binary); err != nil {
+		t.Skip("Dart Sass is not installed")
+	}
+	root := t.TempDir()
+	source := filepath.Join(root, "Main.scss")
+	if err := os.WriteFile(source, []byte(`@import "theme/mixins/font-icon.js";
+@import "ext/sass/etc/extensions.js";
+$icon-args: parseFontIconArgs('A' 16px);
+.icon {
+    font-size: nth($icon-args, 2);
+    background-image: url(file_join("assets", "fonts/icon.woff"));
+}
+`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	css, warnings, err := compileClassSassWithInlineImports(root, []string{source}, false, map[string]bool{source: true}, nil, nil, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(warnings) != 0 {
+		t.Fatalf("Fashion Sass shim warnings = %#v, want none", warnings)
+	}
+	if !bytes.Contains(css, []byte("font-size: 16px")) || !bytes.Contains(css, []byte(`url("assets/fonts/icon.woff")`)) {
+		t.Fatalf("compiled Fashion shim CSS = %s", css)
+	}
+}
+
 func TestPackageSassSrcIncludesExplicitEntryFiles(t *testing.T) {
 	binary := os.Getenv("SASS")
 	if binary == "" {

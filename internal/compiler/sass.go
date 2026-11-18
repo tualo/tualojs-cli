@@ -1498,6 +1498,16 @@ func isSassCompassCompatibilityImport(importPath string) bool {
 	}
 }
 
+func isFashionJavaScriptImportShim(importPath string) bool {
+	base := strings.ToLower(filepath.Base(filepath.ToSlash(strings.TrimSpace(importPath))))
+	switch base {
+	case "font-icon.js", "extensions.js":
+		return true
+	default:
+		return false
+	}
+}
+
 func inspectSassImportTree(appRoot, source string, visited map[string]bool) (bool, []string, error) {
 	absolute, err := filepath.Abs(source)
 	if err != nil {
@@ -1613,6 +1623,11 @@ func inlineSassImports(appRoot, importer string, source []byte, availableVariabl
 					continue
 				}
 				if strings.HasSuffix(strings.ToLower(path), ".js") {
+					if isFashionJavaScriptImportShim(path) {
+						inlinedImport = true
+						valuePrevious = pathMatch[1]
+						continue
+					}
 					warnings = append(warnings, fmt.Sprintf("skipped Fashion JavaScript import %q in Sass source %s", path, current))
 					dropDirective = true
 					valuePrevious = pathMatch[1]
