@@ -248,6 +248,8 @@ func BuildWithTargetOptions(appDir, outputDir, selectedToolkit, selectedPlatform
 	}
 	sassMixins["border-radius"] = true
 	sassMixins["opacity"] = true
+	sassMixins["user-select"] = true
+	sassMixins["box-shadow"] = true
 	sassSources, sassMixinWarnings, err := filterSassSourcesByMixins(sassSources, sassMixins)
 	if err != nil {
 		return BuildResult{}, err

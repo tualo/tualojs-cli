@@ -11,7 +11,7 @@ Das mitgelieferte Ext-SDK enthält globale Sass-Einstiege unter `ext/sass/etc`. 
 - Variablenzuweisungen mit einfachen Vorwärtsreferenzen innerhalb derselben Datei werden vor dem Kompilieren dependency-geordnet.
 - Statische Sass-Helfer aus SDK-Packages, die über den Root-`etc`-Einstieg importiert werden, werden ebenfalls vor Package-Variablen geladen; so stehen etwa Font-Awesome-Variablen wie `$fa-var-caret-down` zur Verfügung.
 - Fehlende Feature-Flags `$include-*` erhalten standardmäßig `false`; deklarierte Werte aus den Sass-Quellen bleiben maßgeblich.
-- Ein begrenzter Satz von Fashion-Helfern (`map_*`, `file_join`, `parseIconArgs`, `parseFontIconArgs`, `border-radius`, `opacity`) ermöglicht die Kompilierung bekannter Theme-Mixins. Der Classic-Realprojekt-Build erzeugt damit auch CSS für `@include extjs-button-small-ui`.
+- Ein begrenzter Satz von Fashion-/CSS-Helfern (`map_*`, `file_join`, `parseIconArgs`, `parseFontIconArgs`, `border-radius`, `opacity`, `user-select`, `box-shadow`) ermöglicht die Kompilierung bekannter Theme-Mixins. Der Classic-Realprojekt-Build erzeugt damit auch CSS für `@include extjs-button-small-ui`.
 - Doppelte SDK-Root-Wurzeln aus App- und Framework-Auflösung werden dedupliziert und beobachtet.
 - Fashion-JavaScript-Imports und `get-resource-path`-Auswertungen, die einen Sencha-Buildkontext voraussetzen, werden weiterhin diagnostiziert und ausgelassen.
 

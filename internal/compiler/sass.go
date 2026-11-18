@@ -1461,6 +1461,16 @@ $output-paths: null !default;
     border-radius: $radius;
 }
 @mixin opacity($opacity) { opacity: $opacity; }
+@mixin user-select($value) {
+    -webkit-user-select: $value;
+    -moz-user-select: $value;
+    -ms-user-select: $value;
+    user-select: $value;
+}
+@mixin box-shadow($shadows...) {
+    -webkit-box-shadow: $shadows;
+    box-shadow: $shadows;
+}
 `)
 	entry.WriteString(`@function parsebox($box, $index) {
     $length: length($box);
