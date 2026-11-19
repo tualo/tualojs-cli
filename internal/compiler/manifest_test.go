@@ -10,10 +10,11 @@ import (
 func TestNewAssetManifestResolvesBasePathAndPreservesAssetOrder(t *testing.T) {
 	outputDir := t.TempDir()
 	result := BuildResult{
-		AppName:    "Example",
-		Toolkit:    "modern",
-		Theme:      "theme-material",
-		OutputPath: filepath.Join(outputDir, "app.js"),
+		AppName:           "Example",
+		Toolkit:           "modern",
+		Theme:             "theme-material",
+		FrameworkIncluded: true,
+		OutputPath:        filepath.Join(outputDir, "app.js"),
 		StyleSheets: []StyleSheet{
 			{URL: "css/app.css"},
 			{URL: "https://cdn.example/theme.css", Remote: true},
@@ -33,6 +34,9 @@ func TestNewAssetManifestResolvesBasePathAndPreservesAssetOrder(t *testing.T) {
 	}
 	if manifest.OutputDir != outputDir {
 		t.Fatalf("manifest output directory = %q, want %q", manifest.OutputDir, outputDir)
+	}
+	if !manifest.FrameworkIncluded {
+		t.Fatal("manifest should report that the Ext JS runtime is embedded")
 	}
 	if got, want := manifest.CSS, []ManifestAsset{
 		{URL: "/static/example/css/app.css", Path: "css/app.css", File: filepath.Join(outputDir, "css", "app.css")},

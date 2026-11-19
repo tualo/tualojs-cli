@@ -25,6 +25,7 @@ type BuildResult struct {
 	FrameworkVersion     string
 	FrameworkSDKPath     string
 	FrameworkRuntimePath string
+	FrameworkIncluded    bool
 	Toolkit              string
 	Theme                string
 	Packages             []string
@@ -53,6 +54,7 @@ type sourceFile struct {
 	originalData  []byte
 	priority      int
 	framework     bool
+	raw           bool
 	alwaysInclude bool
 	class         []classDeclaration
 }
@@ -96,6 +98,10 @@ func BuildWithTargetOptions(appDir, outputDir, selectedToolkit, selectedPlatform
 }
 
 func BuildWithJavaScriptOptions(appDir, outputDir, selectedToolkit, selectedPlatform string, normalizeLetConst, upgradeES5 bool, mode string, includeSourceMap, minify bool) (BuildResult, error) {
+	return BuildWithBundleOptions(appDir, outputDir, selectedToolkit, selectedPlatform, normalizeLetConst, upgradeES5, false, mode, includeSourceMap, minify)
+}
+
+func BuildWithBundleOptions(appDir, outputDir, selectedToolkit, selectedPlatform string, normalizeLetConst, upgradeES5, includeExtJS bool, mode string, includeSourceMap, minify bool) (BuildResult, error) {
 	if mode == "" {
 		mode = BuildModeDevelopment
 	}
@@ -273,6 +279,25 @@ func BuildWithJavaScriptOptions(appDir, outputDir, selectedToolkit, selectedPlat
 	if err != nil {
 		return BuildResult{}, err
 	}
+	var embeddedFramework *sourceFile
+	if includeExtJS {
+		if runtimePath == "" {
+			return BuildResult{}, fmt.Errorf("including Ext JS in app.js requires an Ext JS SDK and a selected toolkit")
+		}
+		runtimeData, err := os.ReadFile(runtimePath)
+		if err != nil {
+			return BuildResult{}, fmt.Errorf("read Ext JS runtime %s: %w", runtimePath, err)
+		}
+		runtimeName := filepath.ToSlash(filepath.Join("framework", filepath.Base(runtimePath)))
+		embeddedFramework = &sourceFile{
+			path:         runtimePath,
+			name:         runtimeName,
+			data:         runtimeData,
+			originalData: append([]byte(nil), runtimeData...),
+			framework:    true,
+			raw:          true,
+		}
+	}
 	entryPath, err := bundleEntry(config)
 	if err != nil {
 		return BuildResult{}, err
@@ -348,6 +373,9 @@ func BuildWithJavaScriptOptions(appDir, outputDir, selectedToolkit, selectedPlat
 	watchPaths = append(watchPaths, packageSassVarWatchPaths...)
 	watchPaths = append(watchPaths, packageSassWatchPaths...)
 	watchPaths = append(watchPaths, sassImportWatchPaths...)
+	if embeddedFramework != nil {
+		watchPaths = append(watchPaths, embeddedFramework.path)
+	}
 	watchPaths = append(watchPaths, filepath.Join(root, "app.json"), filepath.Join(root, "workspace.json"), entryPath)
 	for _, sourcePath := range paths {
 		if sourcePath.framework {
@@ -410,6 +438,9 @@ func BuildWithJavaScriptOptions(appDir, outputDir, selectedToolkit, selectedPlat
 		return includeOnly[i].priority < includeOnly[j].priority
 	})
 	ordered = append(ordered, includeOnly...)
+	if embeddedFramework != nil {
+		ordered = append([]sourceFile{*embeddedFramework}, ordered...)
+	}
 	entryName, _ := filepath.Rel(root, entryPath)
 	entry := sourceFile{path: entryPath, name: filepath.ToSlash(entryName), data: entryData, originalData: entryOriginalData}
 	ordered = append(ordered, entry)
@@ -451,6 +482,9 @@ func BuildWithJavaScriptOptions(appDir, outputDir, selectedToolkit, selectedPlat
 	}
 	warnings = append(warnings, classSassWarnings...)
 	outputPath := filepath.Join(outputRoot, "app.js")
+	if embeddedFramework != nil && filepath.Clean(outputPath) == filepath.Clean(embeddedFramework.path) {
+		return BuildResult{}, fmt.Errorf("output bundle would overwrite Ext JS runtime %s", embeddedFramework.path)
+	}
 	if outputPath == entryPath {
 		return BuildResult{}, fmt.Errorf("output bundle would overwrite JavaScript entry %s", entryPath)
 	}
@@ -509,6 +543,7 @@ func BuildWithJavaScriptOptions(appDir, outputDir, selectedToolkit, selectedPlat
 		FrameworkVersion:     appPackages.version,
 		FrameworkSDKPath:     appPackages.sdkRoot,
 		FrameworkRuntimePath: runtimePath,
+		FrameworkIncluded:    includeExtJS,
 		Toolkit:              toolkit,
 		Theme:                theme,
 		Packages:             appPackages.packages,

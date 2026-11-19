@@ -11,6 +11,7 @@
 - `basePath` ist der normalisierte öffentliche URL-Präfix des Build-Ausgabeverzeichnisses. Lokale Asset-URLs werden damit bereits vollständig aufgelöst; absolute und Remote-URLs bleiben unverändert.
 - `resources` bezeichnet den öffentlichen Ressourcenpfad. `resourceFiles` listet jedes kopierte Bild, jeden Font und jede weitere Ressource mit relativem Zielpfad und absolutem Dateipfad.
 - `files` fasst alle lokalen CSS-, JavaScript- und Ressourcen-Dateien zum Kopieren zusammen; eine erzeugte Source Map wird ebenfalls aufgeführt.
+- `frameworkIncluded` ist `true`, wenn die Ext-JS-Runtime mit `-include-extjs` in `app.js` eingebettet wurde.
 - App-Name, Toolkit und Theme stehen als Kontext im Manifest. Build-Warnungen bleiben auf stderr, damit stdout valides JSON enthält.
 
 Beispiel: `extjsc build -app ./app -out build-go -json -base-path /static/example/`

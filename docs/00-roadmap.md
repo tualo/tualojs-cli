@@ -59,6 +59,7 @@ Die Implementierung startet mit einem kleinen, durch Tests abgesicherten vertika
 41. **Null-Propagation für `darken()`** (`docs/41-null-propagation-darken.md`): direkte `darken()`-Zuweisungen auf bekannte `null`-Farben als `null` weitergeben.
 42. **ES5→ES6-Uplift, sicherer Funktions-Scope-Kern** (`docs/42-es5-to-es6-uplift.md`): ausgewählte initialisierte `var`-Deklarationen in Funktionskörpern optional in `const`/`let` umwandeln.
 43. **JSON-Asset-Manifest** (`docs/43-json-asset-manifest.md`): geordnete CSS-/JavaScript-Einbindungen und Ressourcenpfad mit optionalem öffentlichem Basepath ausgeben.
+44. **Ext-JS-Runtime im Bundle** (`docs/44-extjs-runtime-in-app-js.md`): die aufgelöste Ext-JS-Runtime auf Wunsch vor den Anwendungscode in `app.js` aufnehmen.
 
 ## Architekturleitplanken
 

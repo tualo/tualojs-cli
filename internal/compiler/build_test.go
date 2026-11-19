@@ -6,6 +6,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"reflect"
+	"slices"
 	"strings"
 	"testing"
 )
@@ -74,6 +75,57 @@ func TestBuildPreservesLexicalDeclarationsByDefault(t *testing.T) {
 	}
 	if !strings.Contains(string(bundle), "let value = 'local'") {
 		t.Fatalf("default build unexpectedly transformed lexical declaration: %s", bundle)
+	}
+}
+
+func TestBuildOptionallyEmbedsExtJSRuntimeAtBundleStart(t *testing.T) {
+	root := makeFixture(t, map[string]string{
+		"app.json":                          `{"name":"Example","namespace":"Example","toolkit":"modern","classpath":["app"],"js":[{"path":"app.js","bundle":true}]}`,
+		"workspace.json":                    `{"frameworks":{"ext":{"path":"sdk","version":"8.0.0.43"}}}`,
+		"sdk/package.json":                  `{"name":"ext","version":"8.0.0.43","compatVersion":"8.0.0"}`,
+		"sdk/packages/core/package.json":    `{"version":"8.0.0.43","sencha":{"name":"core","classpath":"${package.dir}/src"}}`,
+		"sdk/packages/core/src/Base.js":     `Ext.define('Ext.Base', {});`,
+		"sdk/modern/modern/package.json":    `{"version":"8.0.0.43","sencha":{"name":"modern","requires":["core"],"classpath":"${package.dir}/src"}}`,
+		"sdk/modern/modern/src/Panel.js":    `Ext.define('Ext.Panel', { extend: 'Ext.Base' });`,
+		"sdk/build/ext-modern-all-debug.js": `window.Ext = window.Ext || {}; var runtimeValue = 1;`,
+		"app.js":                            `Ext.application({name: 'Example', extend: 'Example.Entry'});`,
+		"app/Entry.js":                      `Ext.define('Example.Entry', { run: function () { var applicationValue = 1; return applicationValue; } });`,
+	})
+	result, err := BuildWithBundleOptions(root, "out-embedded", "", "", false, true, true, BuildModeDevelopment, true, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	bundle, err := os.ReadFile(result.OutputPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	content := string(bundle)
+	runtime := strings.Index(content, "window.Ext = window.Ext || {}; var runtimeValue = 1;")
+	application := strings.Index(content, "// Source: app/Entry.js")
+	if runtime < 0 || application < 0 || runtime >= application {
+		t.Fatalf("Ext JS runtime was not prepended intact before application classes: %s", content)
+	}
+	if !strings.Contains(content, "const applicationValue=1") {
+		t.Fatalf("application transforms were not applied after the embedded runtime: %s", content)
+	}
+	if !result.FrameworkIncluded {
+		t.Fatal("build result does not report the embedded framework")
+	}
+	if !slices.Contains(result.WatchPaths, result.FrameworkRuntimePath) {
+		t.Fatalf("watch paths do not include the embedded runtime: %#v", result.WatchPaths)
+	}
+	if _, ok := result.SourceFiles["framework/ext-modern-all-debug.js"]; !ok {
+		t.Fatalf("source file map does not include the runtime: %#v", result.SourceFiles)
+	}
+}
+
+func TestBuildCannotEmbedExtJSWithoutSDK(t *testing.T) {
+	root := makeFixture(t, map[string]string{
+		"app.json": `{"name":"Example","namespace":"Example","classpath":["app"],"js":[{"path":"app.js","bundle":true}]}`,
+		"app.js":   `Ext.application({name: 'Example'});`,
+	})
+	if _, err := BuildWithBundleOptions(root, "out", "", "", false, false, true, BuildModeDevelopment, false, false); err == nil || !strings.Contains(err.Error(), "requires an Ext JS SDK") {
+		t.Fatalf("build error = %v, want an Ext JS SDK requirement", err)
 	}
 }
 

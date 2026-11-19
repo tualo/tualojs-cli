@@ -20,16 +20,17 @@ type ManifestFile struct {
 }
 
 type AssetManifest struct {
-	AppName       string          `json:"appName"`
-	Toolkit       string          `json:"toolkit,omitempty"`
-	Theme         string          `json:"theme,omitempty"`
-	OutputDir     string          `json:"outputDir"`
-	BasePath      string          `json:"basePath"`
-	CSS           []ManifestAsset `json:"css"`
-	JS            []ManifestAsset `json:"js"`
-	Resources     string          `json:"resources"`
-	ResourceFiles []ManifestFile  `json:"resourceFiles"`
-	Files         []ManifestFile  `json:"files"`
+	AppName           string          `json:"appName"`
+	Toolkit           string          `json:"toolkit,omitempty"`
+	Theme             string          `json:"theme,omitempty"`
+	FrameworkIncluded bool            `json:"frameworkIncluded,omitempty"`
+	OutputDir         string          `json:"outputDir"`
+	BasePath          string          `json:"basePath"`
+	CSS               []ManifestAsset `json:"css"`
+	JS                []ManifestAsset `json:"js"`
+	Resources         string          `json:"resources"`
+	ResourceFiles     []ManifestFile  `json:"resourceFiles"`
+	Files             []ManifestFile  `json:"files"`
 }
 
 // NewAssetManifest returns the CSS and JavaScript URLs emitted by a build.
@@ -42,16 +43,17 @@ func NewAssetManifest(result BuildResult, basePath string) AssetManifest {
 		outputDir = absoluteOutputDir
 	}
 	manifest := AssetManifest{
-		AppName:       result.AppName,
-		Toolkit:       result.Toolkit,
-		Theme:         result.Theme,
-		OutputDir:     outputDir,
-		BasePath:      basePath,
-		CSS:           make([]ManifestAsset, 0, len(result.StyleSheets)),
-		JS:            make([]ManifestAsset, 0, len(result.Scripts)),
-		Resources:     resolveManifestURL(basePath, "resources/", false),
-		ResourceFiles: make([]ManifestFile, 0, len(result.ResourcePaths)),
-		Files:         make([]ManifestFile, 0, len(result.Scripts)+len(result.StyleSheets)+len(result.ResourcePaths)+1),
+		AppName:           result.AppName,
+		Toolkit:           result.Toolkit,
+		Theme:             result.Theme,
+		FrameworkIncluded: result.FrameworkIncluded,
+		OutputDir:         outputDir,
+		BasePath:          basePath,
+		CSS:               make([]ManifestAsset, 0, len(result.StyleSheets)),
+		JS:                make([]ManifestAsset, 0, len(result.Scripts)),
+		Resources:         resolveManifestURL(basePath, "resources/", false),
+		ResourceFiles:     make([]ManifestFile, 0, len(result.ResourcePaths)),
+		Files:             make([]ManifestFile, 0, len(result.Scripts)+len(result.StyleSheets)+len(result.ResourcePaths)+1),
 	}
 	seenFiles := make(map[string]bool)
 	for _, stylesheet := range result.StyleSheets {

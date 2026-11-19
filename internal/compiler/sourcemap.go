@@ -38,21 +38,21 @@ func assembleBundle(sources []sourceFile, normalizeLetConst, upgradeES5, include
 	sourceIndexes := make(map[string]int)
 	for _, source := range sources {
 		content := string(source.data)
-		if upgradeES5 {
+		if !source.raw && upgradeES5 {
 			var err error
 			content, err = upgradeES5JavaScript(content)
 			if err != nil {
 				return nil, nil, fmt.Errorf("upgrade ES5 source %s: %w", source.name, err)
 			}
 		}
-		if normalizeLetConst {
+		if !source.raw && normalizeLetConst {
 			var err error
 			content, err = transformJavaScript(content)
 			if err != nil {
 				return nil, nil, fmt.Errorf("transform source %s: %w", source.name, err)
 			}
 		}
-		if minify {
+		if minify && !source.raw {
 			var err error
 			content, err = minifyJavaScript(content)
 			if err != nil {
