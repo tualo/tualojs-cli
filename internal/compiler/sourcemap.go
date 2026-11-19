@@ -20,7 +20,7 @@ type sourceMapV3 struct {
 	Mappings       string   `json:"mappings"`
 }
 
-func assembleBundle(sources []sourceFile, normalizeLetConst, includeSourceMap, minify bool) ([]byte, []byte, error) {
+func assembleBundle(sources []sourceFile, normalizeLetConst, upgradeES5, includeSourceMap, minify bool) ([]byte, []byte, error) {
 	var bundle strings.Builder
 	mappings := sourceMapMappings{lines: []string{""}}
 	generatedLine := 0
@@ -38,6 +38,13 @@ func assembleBundle(sources []sourceFile, normalizeLetConst, includeSourceMap, m
 	sourceIndexes := make(map[string]int)
 	for _, source := range sources {
 		content := string(source.data)
+		if upgradeES5 {
+			var err error
+			content, err = upgradeES5JavaScript(content)
+			if err != nil {
+				return nil, nil, fmt.Errorf("upgrade ES5 source %s: %w", source.name, err)
+			}
+		}
 		if normalizeLetConst {
 			var err error
 			content, err = transformJavaScript(content)
@@ -165,6 +172,10 @@ func tokenSequencesAlign(original, generated []jsToken) bool {
 		}
 		if original[i].kind == identifierToken && generated[i].kind == identifierToken &&
 			(original[i].value == "let" || original[i].value == "const") && generated[i].value == "var" {
+			continue
+		}
+		if original[i].kind == identifierToken && generated[i].kind == identifierToken &&
+			original[i].value == "var" && (generated[i].value == "let" || generated[i].value == "const") {
 			continue
 		}
 		return false

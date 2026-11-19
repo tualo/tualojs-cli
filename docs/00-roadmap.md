@@ -57,6 +57,7 @@ Die Implementierung startet mit einem kleinen, durch Tests abgesicherten vertika
 39. **Modern-Icon-Sass-Shim** (`docs/39-modern-icon-sass-shim.md`): `icon.js` als bekannten Import behandeln, wenn dessen `parseIconArgs`-Funktion vom Sass-Prelude bereitgestellt wird.
 40. **Verschachtelte Fashion-Dynamic-Werte** (`docs/40-verschachtelte-dynamic-werte.md`): innere `dynamic()`-Wrapper in unterstützten Sass-Variablenwerten wie Maps rekursiv normalisieren.
 41. **Null-Propagation für `darken()`** (`docs/41-null-propagation-darken.md`): direkte `darken()`-Zuweisungen auf bekannte `null`-Farben als `null` weitergeben.
+42. **ES5→ES6-Uplift, sicherer Funktions-Scope-Kern** (`docs/42-es5-to-es6-uplift.md`): ausgewählte initialisierte `var`-Deklarationen in Funktionskörpern optional in `const`/`let` umwandeln.
 
 ## Architekturleitplanken
 

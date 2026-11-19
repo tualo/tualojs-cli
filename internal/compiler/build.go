@@ -91,6 +91,10 @@ func BuildWithOutputOptions(appDir, outputDir, selectedToolkit string, normalize
 }
 
 func BuildWithTargetOptions(appDir, outputDir, selectedToolkit, selectedPlatform string, normalizeLetConst bool, mode string, includeSourceMap, minify bool) (BuildResult, error) {
+	return BuildWithJavaScriptOptions(appDir, outputDir, selectedToolkit, selectedPlatform, normalizeLetConst, false, mode, includeSourceMap, minify)
+}
+
+func BuildWithJavaScriptOptions(appDir, outputDir, selectedToolkit, selectedPlatform string, normalizeLetConst, upgradeES5 bool, mode string, includeSourceMap, minify bool) (BuildResult, error) {
 	if mode == "" {
 		mode = BuildModeDevelopment
 	}
@@ -424,7 +428,7 @@ func BuildWithTargetOptions(appDir, outputDir, selectedToolkit, selectedPlatform
 	if err := os.MkdirAll(outputRoot, 0o755); err != nil {
 		return BuildResult{}, fmt.Errorf("create output directory: %w", err)
 	}
-	bundle, sourceMapData, err := assembleBundle(ordered, normalizeLetConst, includeSourceMap, minify)
+	bundle, sourceMapData, err := assembleBundle(ordered, normalizeLetConst, upgradeES5, includeSourceMap, minify)
 	if err != nil {
 		return BuildResult{}, err
 	}

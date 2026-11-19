@@ -24,6 +24,7 @@ type Config struct {
 	Toolkit           string
 	Platform          string
 	NormalizeLetConst bool
+	UpgradeES5        bool
 	Mode              string
 	SourceMap         bool
 	Minify            bool
@@ -54,7 +55,7 @@ func Run(ctx context.Context, config Config) error {
 		config.Mode = compiler.BuildModeDevelopment
 	}
 
-	result, err := compiler.BuildWithTargetOptions(config.AppDir, config.OutDir, config.Toolkit, config.Platform, config.NormalizeLetConst, config.Mode, config.SourceMap, config.Minify)
+	result, err := compiler.BuildWithJavaScriptOptions(config.AppDir, config.OutDir, config.Toolkit, config.Platform, config.NormalizeLetConst, config.UpgradeES5, config.Mode, config.SourceMap, config.Minify)
 	if err != nil {
 		return err
 	}
@@ -376,7 +377,7 @@ func watch(ctx context.Context, config Config, current *atomic.Pointer[previewSt
 			if snapshotsEqual(snapshot, fileSnapshot(state.result.WatchPaths, filepath.Dir(state.result.OutputPath))) {
 				continue
 			}
-			result, err := compiler.BuildWithTargetOptions(config.AppDir, config.OutDir, config.Toolkit, config.Platform, config.NormalizeLetConst, config.Mode, config.SourceMap, config.Minify)
+			result, err := compiler.BuildWithJavaScriptOptions(config.AppDir, config.OutDir, config.Toolkit, config.Platform, config.NormalizeLetConst, config.UpgradeES5, config.Mode, config.SourceMap, config.Minify)
 			if err != nil {
 				log.Printf("rebuild failed: %v", err)
 				snapshot = fileSnapshot(state.result.WatchPaths, filepath.Dir(state.result.OutputPath))

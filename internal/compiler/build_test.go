@@ -3,6 +3,7 @@ package compiler
 import (
 	"encoding/json"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"reflect"
 	"strings"
@@ -73,6 +74,42 @@ func TestBuildPreservesLexicalDeclarationsByDefault(t *testing.T) {
 	}
 	if !strings.Contains(string(bundle), "let value = 'local'") {
 		t.Fatalf("default build unexpectedly transformed lexical declaration: %s", bundle)
+	}
+}
+
+func TestBuildUpgradesES5OnlyWhenEnabled(t *testing.T) {
+	root := makeFixture(t, map[string]string{
+		"app.json":     `{"name":"Example","namespace":"Example","classpath":["app"],"js":[{"path":"app.js","bundle":true}]}`,
+		"app.js":       `Ext.application({name: 'Example', extend: 'Example.Entry'});`,
+		"app/Entry.js": `Ext.define('Example.Entry', { run: function () { var stable = 1; var changing = 0; changing++; return stable + changing; } });`,
+	})
+	result, err := BuildWithJavaScriptOptions(root, "out", "", "", false, true, BuildModeDevelopment, false, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	bundle, err := os.ReadFile(result.OutputPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(bundle), "const stable = 1") || !strings.Contains(string(bundle), "let changing = 0") {
+		t.Fatalf("ES5 upgrade option was not applied to the bundle: %s", bundle)
+	}
+	if node, err := exec.LookPath("node"); err == nil {
+		if output, err := exec.Command(node, "--check", result.OutputPath).CombinedOutput(); err != nil {
+			t.Fatalf("node rejected the upgraded bundle: %v\n%s", err, output)
+		}
+	}
+
+	defaultResult, err := Build(root, "out-default")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defaultBundle, err := os.ReadFile(defaultResult.OutputPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(defaultBundle), "var stable = 1") {
+		t.Fatalf("default build unexpectedly upgraded ES5 declarations: %s", defaultBundle)
 	}
 }
 
