@@ -58,6 +58,7 @@ Die Implementierung startet mit einem kleinen, durch Tests abgesicherten vertika
 40. **Verschachtelte Fashion-Dynamic-Werte** (`docs/40-verschachtelte-dynamic-werte.md`): innere `dynamic()`-Wrapper in unterstützten Sass-Variablenwerten wie Maps rekursiv normalisieren.
 41. **Null-Propagation für `darken()`** (`docs/41-null-propagation-darken.md`): direkte `darken()`-Zuweisungen auf bekannte `null`-Farben als `null` weitergeben.
 42. **ES5→ES6-Uplift, sicherer Funktions-Scope-Kern** (`docs/42-es5-to-es6-uplift.md`): ausgewählte initialisierte `var`-Deklarationen in Funktionskörpern optional in `const`/`let` umwandeln.
+43. **JSON-Asset-Manifest** (`docs/43-json-asset-manifest.md`): geordnete CSS-/JavaScript-Einbindungen und Ressourcenpfad mit optionalem öffentlichem Basepath ausgeben.
 
 ## Architekturleitplanken
 

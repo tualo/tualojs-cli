@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"sort"
 	"strings"
 )
 
@@ -297,18 +298,18 @@ func validateResourceOutput(output string) error {
 	return nil
 }
 
-func copyResources(resources []resolvedResource, outputRoot, appRoot string, ignore []*regexp.Regexp) (int, error) {
+func copyResources(resources []resolvedResource, outputRoot, appRoot string, ignore []*regexp.Regexp) ([]string, error) {
 	resourceRoot := filepath.Join(outputRoot, "resources")
 	written := make(map[string]string)
 	for _, resource := range resources {
 		info, err := os.Stat(resource.source)
 		if err != nil {
-			return len(written), fmt.Errorf("stat resource %s: %w", resource.source, err)
+			return nil, fmt.Errorf("stat resource %s: %w", resource.source, err)
 		}
 		if info.IsDir() {
 			targetBase := filepath.Join(resourceRoot, filepath.FromSlash(resource.output))
 			if isPathWithin(targetBase, resource.source) {
-				return len(written), fmt.Errorf("resource output %s is inside its source directory %s", targetBase, resource.source)
+				return nil, fmt.Errorf("resource output %s is inside its source directory %s", targetBase, resource.source)
 			}
 			err = filepath.WalkDir(resource.source, func(sourcePath string, entry fs.DirEntry, walkErr error) error {
 				if walkErr != nil {
@@ -340,7 +341,7 @@ func copyResources(resources []resolvedResource, outputRoot, appRoot string, ign
 				return nil
 			})
 			if err != nil {
-				return len(written), fmt.Errorf("copy resource directory %s: %w", resource.source, err)
+				return nil, fmt.Errorf("copy resource directory %s: %w", resource.source, err)
 			}
 			continue
 		}
@@ -349,10 +350,15 @@ func copyResources(resources []resolvedResource, outputRoot, appRoot string, ign
 			destination = filepath.Join(destination, filepath.Base(resource.source))
 		}
 		if err := copyResourceFile(resource.source, destination, written, true); err != nil {
-			return len(written), err
+			return nil, err
 		}
 	}
-	return len(written), nil
+	paths := make([]string, 0, len(written))
+	for path := range written {
+		paths = append(paths, path)
+	}
+	sort.Strings(paths)
+	return paths, nil
 }
 
 func copyResourceFile(source, destination string, written map[string]string, overwrite bool) error {

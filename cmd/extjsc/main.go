@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"flag"
 	"fmt"
@@ -46,6 +47,8 @@ func runBuild(args []string) error {
 	platform := flags.String("platform", "", "platform target for Sencha conditions (desktop, phone, or tablet)")
 	normalizeLetConst := flags.Bool("normalize-let-const", false, "lower direct function-scope let/const declarations to var")
 	upgradeES5 := flags.Bool("upgrade-es5", false, "upgrade safe function-local ES5 var declarations to const/let")
+	jsonOutput := flags.Bool("json", false, "write the built CSS and JavaScript assets as a JSON manifest")
+	basePath := flags.String("base-path", "", "public URL prefix for assets in the JSON manifest")
 	mode := flags.String("mode", compiler.BuildModeDevelopment, "build mode (development or production)")
 	sourceMap := flags.Bool("source-map", false, "write an app.js.map source map")
 	minify := flags.Bool("minify", false, "minify JavaScript whitespace and comments")
@@ -65,6 +68,14 @@ func runBuild(args []string) error {
 	}
 	for _, warning := range result.Warnings {
 		fmt.Fprintln(os.Stderr, "warning:", warning)
+	}
+	if *jsonOutput {
+		encoder := json.NewEncoder(os.Stdout)
+		encoder.SetIndent("", "  ")
+		if err := encoder.Encode(compiler.NewAssetManifest(result, *basePath)); err != nil {
+			return fmt.Errorf("write asset manifest: %w", err)
+		}
+		return nil
 	}
 	if result.FrameworkVersion != "" {
 		framework := "Ext JS " + result.FrameworkVersion
@@ -120,6 +131,6 @@ func runWatch(args []string) error {
 
 func printUsage(w *os.File) {
 	fmt.Fprintln(w, "Usage:")
-	fmt.Fprintln(w, "  extjsc build [-app <directory>] [-out <directory>] [-toolkit classic|modern] [-platform desktop|phone|tablet] [-mode development|production] [-normalize-let-const] [-upgrade-es5] [-minify] [-source-map]")
+	fmt.Fprintln(w, "  extjsc build [-app <directory>] [-out <directory>] [-toolkit classic|modern] [-platform desktop|phone|tablet] [-mode development|production] [-normalize-let-const] [-upgrade-es5] [-json [-base-path <url-prefix>]] [-minify] [-source-map]")
 	fmt.Fprintln(w, "  extjsc watch [-app <directory>] [-out <directory>] [-toolkit classic|modern] [-platform desktop|phone|tablet] [-mode development|production] [-normalize-let-const] [-upgrade-es5] [-minify] [-source-map] [-addr 127.0.0.1:1841]")
 }

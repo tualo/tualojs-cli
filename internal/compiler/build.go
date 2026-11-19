@@ -31,6 +31,7 @@ type BuildResult struct {
 	WatchPaths           []string
 	ResourcesPath        string
 	ResourceFiles        int
+	ResourcePaths        []string
 	StyleSheets          []StyleSheet
 	Scripts              []ScriptAsset
 	FrameworkClasses     []string
@@ -458,10 +459,11 @@ func BuildWithJavaScriptOptions(appDir, outputDir, selectedToolkit, selectedPlat
 			return BuildResult{}, fmt.Errorf("output bundle would overwrite class source %s", source.path)
 		}
 	}
-	resourceFiles, err := copyResources(resources, outputRoot, root, ignorePatterns)
+	resourcePaths, err := copyResources(resources, outputRoot, root, ignorePatterns)
 	if err != nil {
 		return BuildResult{}, err
 	}
+	resourceFiles := len(resourcePaths)
 	copiedStylesheets, err := copyStylesheets(styleSheets, outputRoot, outputPath)
 	if err != nil {
 		return BuildResult{}, err
@@ -513,6 +515,7 @@ func BuildWithJavaScriptOptions(appDir, outputDir, selectedToolkit, selectedPlat
 		WatchPaths:           watchPaths,
 		ResourcesPath:        filepath.Join(outputRoot, "resources"),
 		ResourceFiles:        resourceFiles,
+		ResourcePaths:        resourcePaths,
 		StyleSheets:          copiedStylesheets,
 		Scripts:              jsAssets,
 		FrameworkClasses:     frameworkClasses,
