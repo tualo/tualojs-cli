@@ -25,7 +25,10 @@ for os in linux windows darwin; do
             windows) extension=.exe ;;
         esac
 
-        output="dist/tualojs-${platform}-${arch}${extension}"
+
+        outputpath="dist/${platform}/${arch}"
+        mkdir -p "$outputpath"
+        output="${outputpath}/tualojs${extension}"
         printf 'Building %s/%s -> %s\n' "$os" "$arch" "$output"
         CGO_ENABLED=0 GOOS="$os" GOARCH="$arch" \
             go build -mod=readonly -trimpath -o "$output" ./cmd/tualojs
