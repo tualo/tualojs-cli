@@ -41,7 +41,7 @@ func resolveClassSassSources(appRoot string, sourceRoots []string, ignore []*reg
 	for _, sourceRoot := range sourceRoots {
 		root, err := projectPath(appRoot, sourceRoot)
 		if err != nil {
-			return nil, fmt.Errorf("Sass source path: %w", err)
+			return nil, fmt.Errorf("sass source path: %w", err)
 		}
 		info, err := os.Stat(root)
 		if err != nil {
@@ -727,7 +727,6 @@ func removeFashionScopedFunction(source []byte, declaration string) ([]byte, boo
 			depth--
 			if depth == 0 {
 				end = index + 1
-				break
 			}
 		}
 		if end >= 0 {
@@ -2644,7 +2643,7 @@ $output-paths: null !default;
 		}
 		relative, err := filepath.Rel(appRoot, source)
 		if err != nil {
-			return nil, warnings, fmt.Errorf("make Sass source path relative: %w", err)
+			return nil, warnings, fmt.Errorf("make sass source path relative: %w", err)
 		}
 		entry.WriteString("@import ")
 		entry.WriteString(strconv.Quote(filepath.ToSlash(relative)))
@@ -2654,14 +2653,14 @@ $output-paths: null !default;
 	if imported == 0 {
 		return nil, warnings, nil
 	}
-	command := exec.Command(binary, "--no-source-map", "--style="+style, "--load-path", appRoot, "--stdin")
+	command := exec.Command(binary, "--no-source-map", "--style="+style, "--load-path", appRoot, "--stdin") // #nosec G702 -- SASS intentionally selects the executable; arguments are passed directly without a shell.
 	command.Stdin = strings.NewReader(entry.String())
 	var stdout, stderr bytes.Buffer
 	command.Stdout = &stdout
 	command.Stderr = &stderr
 	if err := command.Run(); err != nil {
 		if os.IsNotExist(err) {
-			return nil, warnings, fmt.Errorf("Dart Sass executable %q was not found; install Dart Sass or set SASS to its path", binary)
+			return nil, warnings, fmt.Errorf("sass executable %q was not found; install Dart Sass or set SASS to its path", binary)
 		}
 		detail := strings.TrimSpace(stderr.String())
 		if detail == "" {
@@ -2669,7 +2668,7 @@ $output-paths: null !default;
 		}
 		return nil, warnings, fmt.Errorf("compile class Sass with %s: %s", binary, detail)
 	}
-	if start, _ := findFashionDynamicStart(string(stdout.Bytes()), 0); start >= 0 {
+	if start, _ := findFashionDynamicStart(stdout.String(), 0); start >= 0 {
 		return nil, warnings, fmt.Errorf("compiled CSS still contains dynamic(); Sencha Fashion is required for this Sass input")
 	}
 	return stdout.Bytes(), warnings, nil

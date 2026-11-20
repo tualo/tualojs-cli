@@ -246,7 +246,7 @@ func BuildWithBundleOptions(appDir, outputDir, selectedToolkit, selectedPlatform
 	}
 	sassSources := uniquePaths(append(append(append(append(append(append(append(append(appSassEtc, themeSassHelperSources...), packageSassEtcSources...), packageSassVarSources...), packageThemeSassEtcSources...), appSassVar...), packageSassSources...), appSassSrc...), classSassSources...))
 	if len(sassSources) > 0 && toolkit == "" {
-		return BuildResult{}, fmt.Errorf("Sass compilation requires a selected toolkit; pass -toolkit classic or -toolkit modern")
+		return BuildResult{}, fmt.Errorf("sass compilation requires a selected toolkit; pass -toolkit classic or -toolkit modern")
 	}
 	sassImportWatchPaths, err := resolveSassImportWatchPaths(root, sassSources)
 	if err != nil {
@@ -771,7 +771,7 @@ func loadClasses(paths []classSourcePath, mode, appRoot, toolkit, platform strin
 			}
 			if candidate.declaration.override != "" {
 				target := candidate.declaration.override
-				overrides[target] = append(overrides[target], overrideDeclaration{source: candidate.source, declaration: candidate.declaration})
+				overrides[target] = append(overrides[target], overrideDeclaration(candidate))
 				if candidate.source.framework {
 					frameworkFiles[candidate.declaration.name] = candidate.source.path
 				}

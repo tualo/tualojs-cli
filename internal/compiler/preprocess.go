@@ -40,7 +40,7 @@ func preprocessSenchaForTarget(source, mode, toolkit, platform string) (string, 
 		if toolkitMarker == "open" {
 			conditionActive, err := evaluateSenchaCondition(condition, toolkit, platform)
 			if err != nil {
-				return "", fmt.Errorf("Sencha condition %q: %w", condition, err)
+				return "", fmt.Errorf("invalid Sencha condition %q: %w", condition, err)
 			}
 			toolkitConditions = append(toolkitConditions, toolkitCondition{name: condition, active: toolkitActive && conditionActive})
 			output.WriteString(lineEnding)
@@ -52,7 +52,7 @@ func preprocessSenchaForTarget(source, mode, toolkit, platform string) (string, 
 			}
 			current := toolkitConditions[len(toolkitConditions)-1]
 			if condition != "" && condition != current.name {
-				return "", fmt.Errorf("Sencha toolkit condition close %q does not match open condition %q", condition, current.name)
+				return "", fmt.Errorf("toolkit condition close %q does not match open condition %q", condition, current.name)
 			}
 			toolkitConditions = toolkitConditions[:len(toolkitConditions)-1]
 			output.WriteString(lineEnding)
@@ -61,7 +61,7 @@ func preprocessSenchaForTarget(source, mode, toolkit, platform string) (string, 
 		if featureMarker == "open" {
 			featureEnabled, err := evaluateSenchaFeature(feature)
 			if err != nil {
-				return "", fmt.Errorf("Sencha feature %q: %w", feature, err)
+				return "", fmt.Errorf("invalid Sencha feature %q: %w", feature, err)
 			}
 			featureConditions = append(featureConditions, featureCondition{name: feature, active: featureActive && featureEnabled})
 			output.WriteString(lineEnding)

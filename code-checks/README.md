@@ -37,7 +37,7 @@ go install golang.org/x/vuln/cmd/govulncheck@latest
 go install github.com/securego/gosec/v2/cmd/gosec@latest
 ```
 
-Ensure `$(go env GOPATH)/bin` is on `PATH`. Review scanner findings: static analyzers can report false positives, and `govulncheck` reports known vulnerabilities only when affected code is reachable in the analyzed build.
+Ensure `$(go env GOPATH)/bin` is on `PATH`. The gosec gate fails on high-severity, high-confidence findings; lower-confidence reports should still be reviewed. The configured Sass executable is an intentional exception: the user selects it explicitly, and tualojs invokes it without a shell. `govulncheck` reports known vulnerabilities only when affected code is reachable in the analyzed build; use a current patched Go release when running it.
 
 ## Fuzz targets
 

@@ -18,7 +18,7 @@ func TestCompileClassSassReportsMissingDartSass(t *testing.T) {
 	}
 	t.Setenv("SASS", filepath.Join(root, "missing-sass"))
 	_, _, err := compileClassSass(root, []string{source}, false)
-	if err == nil || !strings.Contains(err.Error(), "Dart Sass executable") {
+	if err == nil || !strings.Contains(err.Error(), "sass executable") {
 		t.Fatalf("compileClassSass error = %v, want actionable missing-executable error", err)
 	}
 }

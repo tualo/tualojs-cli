@@ -145,13 +145,13 @@ func resolveAppPackagesWithOptional(appRoot string, required, optional []string,
 		return packageResolution{}, fmt.Errorf("parse %s: %w", manifestPath, err)
 	}
 	if sdk.Name != "ext" {
-		return packageResolution{}, fmt.Errorf("SDK at %s is %q, expected Ext JS framework", sdkRoot, sdk.Name)
+		return packageResolution{}, fmt.Errorf("sdk at %s is %q, expected Ext JS framework", sdkRoot, sdk.Name)
 	}
 	if framework.Version != "" && sdk.Version != framework.Version {
 		return packageResolution{}, fmt.Errorf("workspace Ext JS version %s does not match SDK version %s", framework.Version, sdk.Version)
 	}
 	if sdk.CompatVersion != targetExtCompatVersion {
-		return packageResolution{}, fmt.Errorf("Ext JS SDK compatibility version is %s; this compiler targets %s", sdk.CompatVersion, targetExtCompatVersion)
+		return packageResolution{}, fmt.Errorf("compatibility version of Ext JS SDK is %s; this compiler targets %s", sdk.CompatVersion, targetExtCompatVersion)
 	}
 
 	resolution := packageResolution{version: sdk.Version, sdkRoot: sdkRoot, watchPaths: []string{workspacePath, manifestPath}}
@@ -164,7 +164,7 @@ func resolveAppPackagesWithOptional(appRoot string, required, optional []string,
 	}
 	for _, path := range frameworkEtcRoots {
 		if !isPathWithin(path.path, sdkRoot) {
-			return packageResolution{}, fmt.Errorf("Ext JS framework Sass etc path escapes SDK directory")
+			return packageResolution{}, fmt.Errorf("framework Sass etc path escapes SDK directory")
 		}
 		resolution.sassEtcRoots = append(resolution.sassEtcRoots, packageSassEtcRoot{Path: path.path})
 	}
@@ -174,7 +174,7 @@ func resolveAppPackagesWithOptional(appRoot string, required, optional []string,
 	}
 	for _, path := range frameworkVarRoots {
 		if !isPathWithin(path.path, sdkRoot) {
-			return packageResolution{}, fmt.Errorf("Ext JS framework Sass var path escapes SDK directory")
+			return packageResolution{}, fmt.Errorf("framework Sass var path escapes SDK directory")
 		}
 		resolution.sassVarRoots = append(resolution.sassVarRoots, path.path)
 	}
@@ -478,7 +478,8 @@ func frameworkRuntimePath(config appConfig, sdkRoot, toolkit string) (string, er
 		profile = config.Classic
 		defaultFile = "ext-all-debug.js"
 	}
-	for _, entry := range profile.JavaScript {
+	if len(profile.JavaScript) > 0 {
+		entry := profile.JavaScript[0]
 		path := strings.ReplaceAll(entry.Path, "${framework.dir}", sdkRoot)
 		path = strings.ReplaceAll(path, "${toolkit.name}", toolkit)
 		resolved, err := projectPath(sdkRoot, path)
