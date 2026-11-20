@@ -366,6 +366,9 @@ func TestThemeBaseFunctionSourcesQualifyAsSassHelpers(t *testing.T) {
 	path := filepath.Join(appRoot, "ext", "modern", "theme-base", "sass", "etc", "functions.scss")
 	data, err := os.ReadFile(path)
 	if err != nil {
+		if os.IsNotExist(err) {
+			t.Skip("local Ext JS SDK fixture is not available; skipping SDK-specific Sass integration test")
+		}
 		t.Fatal(err)
 	}
 	if !sassSourceIsSassHelper(data) {
