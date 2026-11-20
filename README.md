@@ -33,6 +33,8 @@ Build a binary for the current platform:
 go build -o tualojs ./cmd/tualojs
 ```
 
+The default version shown by locally built binaries is `dev`. The cross-platform `build.sh` uses the current Git description (or `VERSION` when set) as the embedded version.
+
 To build binaries for Linux, Windows, and macOS on amd64 and arm64:
 
 ```sh
@@ -45,6 +47,8 @@ The binaries are written to `dist/`. To run the test suite and static checks:
 go test ./...
 go vet ./...
 ```
+
+GitHub Actions runs the checks on pushes and pull requests. Pushing a `v*` tag builds six release archives (Linux, macOS, and Windows; amd64 and arm64), each containing the binary, documentation, `LICENSE`, and `NOTICE`, plus a `SHA256SUMS` file.
 
 ## Configure an Ext JS SDK
 
@@ -64,6 +68,12 @@ For SDK and package resolution, the application's `workspace.json` must point to
 The SDK's `package.json` must identify the framework as `ext` and declare `compatVersion` `8.0.0`. The SDK is supplied and licensed separately; it is not bundled with tualojs.
 
 ## Usage
+
+Show the embedded version, Go runtime, and target platform:
+
+```sh
+./tualojs version
+```
 
 Build an application from its project directory or pass its path with `-app`:
 

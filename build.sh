@@ -7,12 +7,14 @@ if [ "$#" -ne 0 ]; then
 fi
 
 if ! command -v go >/dev/null 2>&1; then
-    printf 'Error: Go 1.22 or newer must be installed and available in PATH.\n' >&2
+    printf 'Error: Go 1.23 or newer must be installed and available in PATH.\n' >&2
     exit 1
 fi
 
 script_dir=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 cd "$script_dir"
+
+version=${VERSION:-$(git describe --tags --always --dirty 2>/dev/null || printf 'dev')}
 
 mkdir -p dist
 
@@ -31,7 +33,8 @@ for os in linux windows darwin; do
         output="${outputpath}/tualojs${extension}"
         printf 'Building %s/%s -> %s\n' "$os" "$arch" "$output"
         CGO_ENABLED=0 GOOS="$os" GOARCH="$arch" \
-            go build -mod=readonly -trimpath -o "$output" ./cmd/tualojs
+            go build -mod=readonly -trimpath -ldflags "-X main.version=$version" -o "$output" ./cmd/tualojs
+        cp LICENSE NOTICE "$outputpath/"
     done
 done
 

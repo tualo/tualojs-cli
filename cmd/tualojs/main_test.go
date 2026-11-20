@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"encoding/json"
 	"io"
 	"os"
@@ -11,6 +12,33 @@ import (
 
 	"tualojs/internal/compiler"
 )
+
+func TestVersionCommand(t *testing.T) {
+	originalVersion := version
+	version = "v1.2.3"
+	t.Cleanup(func() { version = originalVersion })
+
+	reader, writer, err := os.Pipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	originalStdout := os.Stdout
+	os.Stdout = writer
+	runErr := run([]string{"version"})
+	_ = writer.Close()
+	os.Stdout = originalStdout
+	output, readErr := io.ReadAll(reader)
+	_ = reader.Close()
+	if runErr != nil {
+		t.Fatal(runErr)
+	}
+	if readErr != nil {
+		t.Fatal(readErr)
+	}
+	if !bytes.HasPrefix(output, []byte("tualojs v1.2.3 (")) || !bytes.HasSuffix(output, []byte(")\n")) {
+		t.Fatalf("version output = %q", output)
+	}
+}
 
 func TestBuildJSONWritesAssetManifestToStdout(t *testing.T) {
 	appDir := t.TempDir()

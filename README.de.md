@@ -33,6 +33,8 @@ Binärdatei für die aktuelle Plattform erstellen:
 go build -o tualojs ./cmd/tualojs
 ```
 
+Lokal erstellte Binärdateien zeigen standardmäßig `dev` als Version an. `build.sh` verwendet die aktuelle Git-Beschreibung oder – falls gesetzt – den Wert der Umgebungsvariable `VERSION`.
+
 Binärdateien für Linux, Windows und macOS auf amd64 und arm64 erstellen:
 
 ```sh
@@ -45,6 +47,8 @@ Die Binärdateien werden in `dist/` abgelegt. Tests und statische Prüfungen aus
 go test ./...
 go vet ./...
 ```
+
+GitHub Actions führt die Prüfungen bei Pushes und Pull Requests aus. Ein Push eines `v*`-Tags erstellt sechs Release-Archive (Linux, macOS und Windows; amd64 und arm64). Jedes Archiv enthält die Binärdatei, Dokumentation, `LICENSE` und `NOTICE`; zusätzlich wird eine `SHA256SUMS`-Datei veröffentlicht.
 
 ## Ext-JS-SDK konfigurieren
 
@@ -64,6 +68,12 @@ Für die SDK- und Package-Auflösung muss die `workspace.json` der Anwendung auf
 Die `package.json` des SDKs muss das Framework als `ext` kennzeichnen und `compatVersion` `8.0.0` angeben. Das SDK wird separat bereitgestellt und lizenziert; es ist nicht Teil von tualojs.
 
 ## Verwendung
+
+Eingebettete Version, Go-Laufzeit und Zielplattform anzeigen:
+
+```sh
+./tualojs version
+```
 
 Eine Anwendung bauen. Ihr Verzeichnis kann mit `-app` angegeben werden:
 

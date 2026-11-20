@@ -6,8 +6,10 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"io"
 	"os"
 	"os/signal"
+	"runtime"
 	"strings"
 	"syscall"
 	"time"
@@ -15,6 +17,8 @@ import (
 	"tualojs/internal/compiler"
 	"tualojs/internal/preview"
 )
+
+var version = "dev"
 
 func main() {
 	if err := run(os.Args[1:]); err != nil {
@@ -29,6 +33,9 @@ func run(args []string) error {
 		return nil
 	}
 	switch args[0] {
+	case "version", "-version", "--version":
+		printVersion(os.Stdout)
+		return nil
 	case "watch":
 		return runWatch(args[1:])
 	case "build":
@@ -36,6 +43,10 @@ func run(args []string) error {
 	default:
 		return fmt.Errorf("unknown command %q (expected build or watch)", args[0])
 	}
+}
+
+func printVersion(w io.Writer) {
+	fmt.Fprintf(w, "tualojs %s (%s %s/%s)\n", version, runtime.Version(), runtime.GOOS, runtime.GOARCH)
 }
 
 func runBuild(args []string) error {
@@ -132,6 +143,7 @@ func runWatch(args []string) error {
 
 func printUsage(w *os.File) {
 	fmt.Fprintln(w, "Usage:")
+	fmt.Fprintln(w, "  tualojs version")
 	fmt.Fprintln(w, "  tualojs build [-app <directory>] [-out <directory>] [-toolkit classic|modern] [-platform desktop|phone|tablet] [-mode development|production] [-normalize-let-const] [-upgrade-es5] [-include-extjs] [-json [-base-path <url-prefix>]] [-minify] [-source-map]")
 	fmt.Fprintln(w, "  tualojs watch [-app <directory>] [-out <directory>] [-toolkit classic|modern] [-platform desktop|phone|tablet] [-mode development|production] [-normalize-let-const] [-upgrade-es5] [-minify] [-source-map] [-addr 127.0.0.1:1841]")
 }

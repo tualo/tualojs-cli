@@ -1,0 +1,62 @@
+name: Code checks
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+  workflow_call:
+
+permissions:
+  contents: read
+
+jobs:
+  go:
+    name: Go checks (${{ matrix.go-version }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        go-version: ['1.23.x', stable]
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: ${{ matrix.go-version }}
+          cache: true
+
+      - name: Run formatting, vet, tests, and race checks
+        run: sh code-checks/check-go.sh
+
+  analysis:
+    name: Static analysis, vulnerability scan, and fuzzing
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: stable
+          cache: true
+
+      - name: Install analysis tools
+        run: |
+          go install honnef.co/go/tools/cmd/staticcheck@latest
+          go install golang.org/x/vuln/cmd/govulncheck@latest
+          go install github.com/securego/gosec/v2/cmd/gosec@latest
+          printf '%s\n' "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
+
+      - name: Run static analysis
+        run: sh code-checks/check-static.sh
+
+      - name: Scan for known vulnerabilities and security patterns
+        run: sh code-checks/check-security.sh
+
+      - name: Fuzz parser and preprocessing inputs
+        env:
+          FUZZTIME: 10s
+        run: sh code-checks/check-fuzz.sh
