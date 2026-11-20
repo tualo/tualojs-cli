@@ -12,7 +12,7 @@ import (
 	"testing"
 	"time"
 
-	"extjs-compiler/internal/compiler"
+	"tualojs/internal/compiler"
 )
 
 func TestPreviewServesShellFrameworkThemeAndBundle(t *testing.T) {

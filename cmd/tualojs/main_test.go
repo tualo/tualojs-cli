@@ -9,7 +9,7 @@ import (
 	"strings"
 	"testing"
 
-	"extjs-compiler/internal/compiler"
+	"tualojs/internal/compiler"
 )
 
 func TestBuildJSONWritesAssetManifestToStdout(t *testing.T) {

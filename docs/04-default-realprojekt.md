@@ -24,10 +24,10 @@ Das zugehörige `workspace.json` nennt aktuell Ext JS **8.0.0.43** und passt dam
 Die Realprojekt-Quellen wurden nicht verändert. Die Ausgabe wurde außerhalb des Projekts erzeugt:
 
 ```sh
-go run ./cmd/extjsc build --app testdata/ext-build/default/build/production/Tualo \
+go run ./cmd/tualojs build --app testdata/ext-build/default/build/production/Tualo \
   --toolkit modern --out /tmp/default-modern-go --normalize-let-const
 
-go run ./cmd/extjsc build --app testdata/ext-build/default/build/production/Tualo \
+go run ./cmd/tualojs build --app testdata/ext-build/default/build/production/Tualo \
   --toolkit classic --out /tmp/default-classic-go --normalize-let-const
 ```
 

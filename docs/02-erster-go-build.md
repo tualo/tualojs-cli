@@ -9,7 +9,7 @@ Ein erster vertikaler Schnitt liest das Modern-Toolkit-Fixture und erzeugt ohne 
 Vom Repository-Wurzelverzeichnis:
 
 ```sh
-go run ./cmd/extjsc build \
+go run ./cmd/tualojs build \
   -app testdata/fixtures/minimal-modern \
   -out build-go \
   -source-map

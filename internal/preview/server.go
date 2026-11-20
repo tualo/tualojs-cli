@@ -15,7 +15,7 @@ import (
 	"sync/atomic"
 	"time"
 
-	"extjs-compiler/internal/compiler"
+	"tualojs/internal/compiler"
 )
 
 type Config struct {

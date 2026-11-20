@@ -25,10 +25,10 @@ for os in linux windows darwin; do
             windows) extension=.exe ;;
         esac
 
-        output="dist/extjscompiler-${platform}-${arch}${extension}"
+        output="dist/tualojs-${platform}-${arch}${extension}"
         printf 'Building %s/%s -> %s\n' "$os" "$arch" "$output"
         CGO_ENABLED=0 GOOS="$os" GOARCH="$arch" \
-            go build -mod=readonly -trimpath -o "$output" ./cmd/extjsc
+            go build -mod=readonly -trimpath -o "$output" ./cmd/tualojs
     done
 done
 

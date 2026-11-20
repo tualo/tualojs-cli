@@ -3,7 +3,7 @@
 ## Start
 
 ```sh
-go run ./cmd/extjsc watch \
+go run ./cmd/tualojs watch \
   -app testdata/fixtures/minimal-modern \
   -toolkit modern \
   -mode development \

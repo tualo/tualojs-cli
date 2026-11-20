@@ -660,7 +660,7 @@ func uniquePaths(paths []string) []string {
 }
 
 func writeFileAtomic(path string, data []byte) error {
-	temporary, err := os.CreateTemp(filepath.Dir(path), ".extjsc-*.tmp")
+	temporary, err := os.CreateTemp(filepath.Dir(path), ".tualojs-*.tmp")
 	if err != nil {
 		return err
 	}

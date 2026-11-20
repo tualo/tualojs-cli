@@ -2,7 +2,7 @@
 
 ## Build-Modus
 
-`extjsc build` und `extjsc watch` akzeptieren `-mode development|production`. Der Standard ist `development`.
+`tualojs build` und `tualojs watch` akzeptieren `-mode development|production`. Der Standard ist `development`.
 
 ## `//<debug>`-Blöcke
 

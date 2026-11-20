@@ -12,13 +12,13 @@ import (
 	"syscall"
 	"time"
 
-	"extjs-compiler/internal/compiler"
-	"extjs-compiler/internal/preview"
+	"tualojs/internal/compiler"
+	"tualojs/internal/preview"
 )
 
 func main() {
 	if err := run(os.Args[1:]); err != nil {
-		fmt.Fprintln(os.Stderr, "extjsc:", err)
+		fmt.Fprintln(os.Stderr, "tualojs:", err)
 		os.Exit(1)
 	}
 }
@@ -132,6 +132,6 @@ func runWatch(args []string) error {
 
 func printUsage(w *os.File) {
 	fmt.Fprintln(w, "Usage:")
-	fmt.Fprintln(w, "  extjsc build [-app <directory>] [-out <directory>] [-toolkit classic|modern] [-platform desktop|phone|tablet] [-mode development|production] [-normalize-let-const] [-upgrade-es5] [-include-extjs] [-json [-base-path <url-prefix>]] [-minify] [-source-map]")
-	fmt.Fprintln(w, "  extjsc watch [-app <directory>] [-out <directory>] [-toolkit classic|modern] [-platform desktop|phone|tablet] [-mode development|production] [-normalize-let-const] [-upgrade-es5] [-minify] [-source-map] [-addr 127.0.0.1:1841]")
+	fmt.Fprintln(w, "  tualojs build [-app <directory>] [-out <directory>] [-toolkit classic|modern] [-platform desktop|phone|tablet] [-mode development|production] [-normalize-let-const] [-upgrade-es5] [-include-extjs] [-json [-base-path <url-prefix>]] [-minify] [-source-map]")
+	fmt.Fprintln(w, "  tualojs watch [-app <directory>] [-out <directory>] [-toolkit classic|modern] [-platform desktop|phone|tablet] [-mode development|production] [-normalize-let-const] [-upgrade-es5] [-minify] [-source-map] [-addr 127.0.0.1:1841]")
 }

@@ -1,3 +1,3 @@
-module extjs-compiler
+module tualojs
 
 go 1.23

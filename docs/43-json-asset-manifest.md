@@ -2,7 +2,7 @@
 
 ## Ziel
 
-`extjsc build -json` schreibt statt der menschenlesbaren Build-Zusammenfassung ein JSON-Manifest nach stdout. Damit kann ein aufrufendes Werkzeug die vom Build erzeugten Stylesheets und Scripts in eine Website einbinden.
+`tualojs build -json` schreibt statt der menschenlesbaren Build-Zusammenfassung ein JSON-Manifest nach stdout. Damit kann ein aufrufendes Werkzeug die vom Build erzeugten Stylesheets und Scripts in eine Website einbinden.
 
 ## Format
 
@@ -14,7 +14,7 @@
 - `frameworkIncluded` ist `true`, wenn die Ext-JS-Runtime mit `-include-extjs` in `app.js` eingebettet wurde.
 - App-Name, Toolkit und Theme stehen als Kontext im Manifest. Build-Warnungen bleiben auf stderr, damit stdout valides JSON enthält.
 
-Beispiel: `extjsc build -app ./app -out build-go -json -base-path /static/example/`
+Beispiel: `tualojs build -app ./app -out build-go -json -base-path /static/example/`
 
 ## Prüfungen
 

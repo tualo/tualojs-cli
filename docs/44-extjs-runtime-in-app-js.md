@@ -2,7 +2,7 @@
 
 ## Ziel
 
-`extjsc build -include-extjs` nimmt die für SDK und Toolkit aufgelöste Ext-JS-Runtime an den Anfang des erzeugten `app.js`-Bundles auf. Dadurch kann die Website statt einer separaten Ext-Runtime-Datei nur das Bundle laden.
+`tualojs build -include-extjs` nimmt die für SDK und Toolkit aufgelöste Ext-JS-Runtime an den Anfang des erzeugten `app.js`-Bundles auf. Dadurch kann die Website statt einer separaten Ext-Runtime-Datei nur das Bundle laden.
 
 ## Verhalten
 
@@ -20,7 +20,7 @@
 ## Verwendung
 
 ```sh
-extjsc build -app ./app -out build-go -toolkit modern -include-extjs -json -base-path /static/example/
+tualojs build -app ./app -out build-go -toolkit modern -include-extjs -json -base-path /static/example/
 ```
 
 ## Grenzen
