@@ -2,11 +2,15 @@
 
 Run checks from the repository root. All scripts are read-only apart from Go's normal test and build caches; fuzzing may save newly discovered corpus cases in Go's fuzz cache.
 
-The same checks run automatically in GitHub Actions on pushes and pull requests. Tagging a version with `v*` runs the checks and, if they pass, publishes cross-platform release archives with `LICENSE`, `NOTICE`, and SHA-256 checksums.
+The same checks run automatically in GitHub Actions on pushes and pull requests. GitHub Actions installs Dart Sass for the Go test matrix. Tagging a version with `v*` runs the checks and, if they pass, publishes binary archives, Debian packages, a Homebrew formula, and SHA-256 checksums.
 
 ## Run the full suite
 
-Install Go 1.23 or newer and the optional analysis tools listed below, then run:
+Install Go 1.23 or newer, Node.js with Dart Sass, and the optional analysis tools listed below, then run:
+
+```sh
+npm install --global sass@1
+```
 
 ```sh
 sh code-checks/check-all.sh
