@@ -1,4 +1,4 @@
-name: Release binaries
+name: Release packages
 
 on:
   push:
@@ -13,7 +13,7 @@ jobs:
     uses: ./.github/workflows/checks.yml
 
   release:
-    name: Build and publish release archives
+    name: Build and publish release packages
     needs: checks
     runs-on: ubuntu-latest
     steps:
@@ -31,15 +31,44 @@ jobs:
           VERSION: ${{ github.ref_name }}
         run: ./build.sh
 
+      - name: Create Debian packages
+        env:
+          VERSION: ${{ github.ref_name }}
+          DEBIAN_MAINTAINER: ${{ vars.DEBIAN_MAINTAINER || 'tualojs contributors' }}
+        run: sh packaging/create-deb-packages.sh
+
       - name: Create release archives and checksums
         env:
           VERSION: ${{ github.ref_name }}
         run: sh packaging/create-release-archives.sh
+
+      - name: Verify release packages
+        env:
+          VERSION: ${{ github.ref_name }}
+        run: |
+          set -eu
+          for package in dist/release/tualojs_${VERSION}_linux_*.deb; do
+            dpkg-deb --info "$package"
+          done
+
+          root=$(mktemp -d)
+          trap 'rm -rf "$root"' EXIT
+          dpkg-deb --extract "dist/release/tualojs_${VERSION}_linux_amd64.deb" "$root"
+          version_output=$("$root/usr/bin/tualojs" version)
+          case "$version_output" in
+            "tualojs ${VERSION} ("*) ;;
+            *) printf 'Unexpected installed version output: %s\n' "$version_output" >&2; exit 1 ;;
+          esac
+
+          ruby -c dist/release/tualojs.rb
+          (cd dist/release && sha256sum -c SHA256SUMS)
 
       - name: Publish GitHub release
         uses: softprops/action-gh-release@v2
         with:
           generate_release_notes: true
           files: |
-            dist/release/*.tar.gz
+            dist/release/tualojs_${{ github.ref_name }}_*.tar.gz
+            dist/release/tualojs_${{ github.ref_name }}_*.deb
+            dist/release/tualojs.rb
             dist/release/SHA256SUMS

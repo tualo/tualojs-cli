@@ -48,7 +48,21 @@ go test ./...
 go vet ./...
 ```
 
-GitHub Actions führt die Prüfungen bei Pushes und Pull Requests aus. Ein Push eines `v*`-Tags erstellt sechs Release-Archive (Linux, macOS und Windows; amd64 und arm64). Jedes Archiv enthält die Binärdatei, Dokumentation, `LICENSE` und `NOTICE`; zusätzlich wird eine `SHA256SUMS`-Datei veröffentlicht.
+GitHub Actions führt die Prüfungen bei Pushes und Pull Requests aus. Ein Push eines `v*`-Tags veröffentlicht sechs Binärarchive (Linux, macOS und Windows; amd64 und arm64), Debian-Pakete für Linux amd64/arm64, eine versionsgebundene Homebrew-Formula und SHA-256-Prüfsummen. Jedes Binärarchiv enthält `LICENSE` und `NOTICE`.
+
+Debian-Paket installieren:
+
+```sh
+sudo apt install ./tualojs_v1.0.0_linux_amd64.deb
+```
+
+Die versionsgebundene Homebrew-Formula direkt installieren:
+
+```sh
+brew install https://github.com/tualo/tualojs-cli/releases/download/v1.0.0/tualojs.rb
+```
+
+`v1.0.0` durch den gewünschten Release-Tag ersetzen. Ein eigenes Homebrew-Tap kann später die kürzere Installationsform `brew install` ermöglichen.
 
 ## Ext-JS-SDK konfigurieren
 
@@ -151,6 +165,7 @@ Ob tualojs für eine konkrete Anwendung geeignet ist, hängt davon ab, ob die be
 
 - [`goals.md`](goals.md) — Projektziele, umgesetzte Funktionen und aktueller Umfang.
 - [`docs/00-roadmap.md`](docs/00-roadmap.md) — Roadmap und Architekturleitlinien.
+- [`packaging/README.md`](packaging/README.md) — Debian- und Homebrew-Release-Artefakte.
 - [`docs/`](docs/) — Verhalten, Beispiele, Tests und Grenzen der einzelnen Funktionen.
 
 ## Lizenz und Drittsoftware

@@ -48,7 +48,21 @@ go test ./...
 go vet ./...
 ```
 
-GitHub Actions runs the checks on pushes and pull requests. Pushing a `v*` tag builds six release archives (Linux, macOS, and Windows; amd64 and arm64), each containing the binary, documentation, `LICENSE`, and `NOTICE`, plus a `SHA256SUMS` file.
+GitHub Actions runs the checks on pushes and pull requests. Pushing a `v*` tag publishes six binary archives (Linux, macOS, and Windows; amd64 and arm64), Debian packages for Linux amd64/arm64, a versioned Homebrew formula, and SHA-256 checksums. Each binary archive contains `LICENSE` and `NOTICE`.
+
+Install a release package with Debian:
+
+```sh
+sudo apt install ./tualojs_v1.0.0_linux_amd64.deb
+```
+
+Install the release's versioned Homebrew formula directly:
+
+```sh
+brew install https://github.com/tualo/tualojs-cli/releases/download/v1.0.0/tualojs.rb
+```
+
+Replace `v1.0.0` with the release tag. A dedicated Homebrew tap can be added separately for the shorter `brew install` form.
 
 ## Configure an Ext JS SDK
 
@@ -151,6 +165,7 @@ Use the documented scope to determine whether tualojs covers the build features 
 
 - [`goals.md`](goals.md) — project goals, implemented features, and current scope.
 - [`docs/00-roadmap.md`](docs/00-roadmap.md) — development roadmap and architecture guidelines.
+- [`packaging/README.md`](packaging/README.md) — Debian and Homebrew release artifacts.
 - [`docs/`](docs/) — per-feature behavior, examples, tests, and limitations.
 
 ## License and third-party software
