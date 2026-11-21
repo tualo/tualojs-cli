@@ -7,6 +7,7 @@
 ## Format
 
 - `css` und `js` enthalten die Asset-URLs in ihrer Build-Reihenfolge. Das Script-Array enthält auch das gebündelte `app.js`.
+- `combinedCSS` enthält – sofern der Build lokale CSS-Quellen zusammenführen konnte – URL, relativen Ausgabepfad und absoluten Dateipfad der kombinierten `<app-name>-all.css`.
 - `outputDir` nennt das absolute Build-Ausgabeverzeichnis. Lokale Einträge in `css`/`js` enthalten `path` relativ zu diesem Verzeichnis und `file` als absoluten Fundort auf der Platte.
 - `basePath` ist der normalisierte öffentliche URL-Präfix des Build-Ausgabeverzeichnisses. Lokale Asset-URLs werden damit bereits vollständig aufgelöst; absolute und Remote-URLs bleiben unverändert.
 - `resources` bezeichnet den öffentlichen Ressourcenpfad. `resourceFiles` listet jedes kopierte Bild, jeden Font und jede weitere Ressource mit relativem Zielpfad und absolutem Dateipfad.
@@ -18,7 +19,7 @@ Beispiel: `tualojs build -app ./app -out build-go -json -base-path /static/examp
 
 ## Prüfungen
 
-- Manifest-Tests prüfen Asset-Reihenfolge, Remote-URLs, Root-relative URLs, Basepath-Normalisierung und physische Ausgabepfade einschließlich Ressourcen-Dateien.
+- Manifest-Tests prüfen Asset-Reihenfolge, Remote-URLs, Root-relative URLs, Basepath-Normalisierung und physische Ausgabepfade einschließlich Ressourcen-Dateien und kombinierter CSS-Datei.
 - Build- und CLI-Prüfungen bestätigen, dass die JSON-Ausgabe das erwartete Manifest enthält und keine Text-Zusammenfassung auf stdout schreibt.
 - `go test -count=1 ./...` und `go vet ./...`.
 

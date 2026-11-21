@@ -6,6 +6,8 @@ Der Compiler verarbeitet lokale Einträge aus `app.json.resources` als Pfadstrin
 
 Lokale statische Stylesheets aus `app.json.css` werden an ihrem relativen Pfad ins Build-Verzeichnis kopiert und in der Preview eingebunden. Remote-CSS wird direkt verlinkt. Dynamische Sencha-Platzhalter wie `${build.out.css.path}` werden übersprungen, da sie auf Sass-/Theme-Build-Ausgaben verweisen.
 
+Wenn lokale CSS-Quellen vorhanden sind, erzeugt `build` zusätzlich `<out>/resources/<toolkit>/resources/<app-name>-all.css`. Dafür werden das vorgebaute Theme-CSS aus `SDK/build/<toolkit>/<theme>/resources/<theme>-all.css`, lokale Stylesheets aus `app.json.css` und – sofern erzeugt – `app-sass.css` in dieser Reihenfolge zusammengeführt. Die Ressourcen des SDK-Themes werden mitkopiert, damit relative Theme-URLs erhalten bleiben; relative `url(...)`-Pfade aus lokalen Stylesheets werden auf die Position der kombinierten Datei umgeschrieben. Ohne Toolkit liegt die Datei unter `<out>/resources/<app-name>-all.css`. Remote-CSS bleibt ein separates Asset. Der JSON-Modus weist die Datei unter `combinedCSS` aus.
+
 Zusätzliche `app.json.js`-Einträge mit `bundle:false` werden ebenfalls in ihrer Manifest-Reihenfolge kopiert und geladen. `remote:true`-Einträge werden nicht kopiert und als externe Script-URL in der Preview beibehalten.
 
 Ein lokales Script mit `includeInBundle:true` wird statt als separate Datei in das Go-Bundle aufgenommen. Seine statischen Ext-Klassendeklarationen nehmen an der normalen Dependency-Auflösung teil.
@@ -28,8 +30,9 @@ Die Sass-Phasen beginnen mit `app.json.sass.etc`, danach folgen SDK-Root- und Pa
 - Fake-SDK-Integrationstest für `sencha.resources` und String-/Array-Formen von `sencha.resource.paths`, einschließlich toolkit-spezifischer Pfade.
 - Fake-SDK-Test für Class-SCSS aus Package-Manifesten und toolkit-spezifische `sass/src`-Pfade.
 - Build-Test für SCSS neben gleichnamigen Klassen, CSS-Konkatenation, Watch-Pfaden und Einbindung in die Stylesheet-Ausgabe.
+- Integrationstest für Theme- plus App-CSS in `<app-name>-all.css`, URL-Rebasing, kopierte Theme-Ressourcen und den Manifest-Eintrag.
 - `testdata/sample` wird aus seinem Sencha-`resources`-Ordner nach `build-go/resources/shared` kopiert.
 
 ## Grenzen
 
-Sencha-Fashion-Themes und Fashion-Mixins werden noch nicht vollständig nachgebildet. `dynamic()`-Wrapper um Dart-Sass-kompatible Variablen-Ausdrücke werden normalisiert; Fashion-spezifische Funktionen und dynamische Theme-Auswertung bleiben unsupported. Package-Class-SCSS mit nicht geladenen Theme-Variablen, nicht unterstützten Imports oder `url(...)` wird ebenfalls ausgelassen. Unbekannte Variablen oder Mixins aus importierten Dateien können weiterhin zu Sass-Warnungen oder -Fehlern führen. CSS-Inlining, Cache-Busting und AppCache-Manifeste sind ebenfalls noch nicht implementiert. Für die Preview werden vorhandene Sencha-App-CSS-Artefakte als Theme-Basis bevorzugt.
+Sencha-Fashion-Themes und Fashion-Mixins werden noch nicht vollständig nachgebildet. Das kombinierte Stylesheet führt das vorgebaute SDK-Theme-CSS mit den vom Compiler unterstützten lokalen CSS-/Sass-Ausgaben zusammen; es ist kein Ersatz für eine vollständige Sencha-Cmd-Fashion-Kompilierung. `dynamic()`-Wrapper um Dart-Sass-kompatible Variablen-Ausdrücke werden normalisiert; Fashion-spezifische Funktionen und dynamische Theme-Auswertung bleiben unsupported. Package-Class-SCSS mit nicht geladenen Theme-Variablen, nicht unterstützten Imports oder `url(...)` wird ebenfalls ausgelassen. Unbekannte Variablen oder Mixins aus importierten Dateien können weiterhin zu Sass-Warnungen oder -Fehlern führen. CSS-`@import`-Abhängigkeiten, Cache-Busting und AppCache-Manifeste werden nicht eingebettet beziehungsweise erzeugt. Für die Preview werden vorhandene Sencha-App-CSS-Artefakte als Theme-Basis bevorzugt.

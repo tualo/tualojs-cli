@@ -21,6 +21,8 @@ type BuildResult struct {
 	AppDir               string
 	SourceCount          int
 	OutputPath           string
+	CombinedCSSPath      string
+	CombinedCSSURL       string
 	Warnings             []string
 	FrameworkVersion     string
 	FrameworkSDKPath     string
@@ -493,6 +495,14 @@ func BuildWithBundleOptions(appDir, outputDir, selectedToolkit, selectedPlatform
 			return BuildResult{}, fmt.Errorf("output bundle would overwrite class source %s", source.path)
 		}
 	}
+	themeCSSSource, themeResources, err := resolveSDKThemeCSS(appPackages.sdkRoot, toolkit, theme)
+	if err != nil {
+		return BuildResult{}, err
+	}
+	themeResourcePaths, err := copySDKThemeResources(themeResources, outputRoot, toolkit)
+	if err != nil {
+		return BuildResult{}, err
+	}
 	resourcePaths, err := copyResources(resources, outputRoot, root, ignorePatterns)
 	if err != nil {
 		return BuildResult{}, err
@@ -520,6 +530,14 @@ func BuildWithBundleOptions(appDir, outputDir, selectedToolkit, selectedPlatform
 		}
 		copiedStylesheets = append(copiedStylesheets, StyleSheet{URL: generatedSassURL, Path: generatedSassPath})
 	}
+	resourcePaths = uniquePaths(append(resourcePaths, themeResourcePaths...))
+	combinedCSSPath, combinedCSSURL, err := writeCombinedAppCSS(
+		outputRoot, config.Name, toolkit, themeCSSSource, copiedStylesheets, resourcePaths,
+	)
+	if err != nil {
+		return BuildResult{}, err
+	}
+	resourceFiles = len(resourcePaths)
 	jsAssets, err := copyScripts(scripts, outputRoot, outputPath)
 	if err != nil {
 		return BuildResult{}, err
@@ -539,6 +557,8 @@ func BuildWithBundleOptions(appDir, outputDir, selectedToolkit, selectedPlatform
 		AppDir:               root,
 		SourceCount:          len(ordered),
 		OutputPath:           outputPath,
+		CombinedCSSPath:      combinedCSSPath,
+		CombinedCSSURL:       combinedCSSURL,
 		Warnings:             warnings,
 		FrameworkVersion:     appPackages.version,
 		FrameworkSDKPath:     appPackages.sdkRoot,

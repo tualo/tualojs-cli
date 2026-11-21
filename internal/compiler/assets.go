@@ -28,6 +28,8 @@ type resolvedScript struct {
 	includeInBundle bool
 }
 
+var cssURLPattern = regexp.MustCompile(`(?i)url\(\s*(?:"([^"]*)"|'([^']*)'|([^)]*?))\s*\)`)
+
 type StyleSheet struct {
 	URL    string
 	Path   string
@@ -110,6 +112,171 @@ func copyStylesheets(stylesheets []resolvedStylesheet, outputRoot, bundlePath st
 		copied = append(copied, StyleSheet{URL: stylesheet.url, Path: absolute})
 	}
 	return copied, nil
+}
+
+func resolveSDKThemeCSS(sdkRoot, toolkit, theme string) (string, string, error) {
+	if sdkRoot == "" || toolkit == "" || theme == "" {
+		return "", "", nil
+	}
+	resources := filepath.Join(sdkRoot, "build", toolkit, theme, "resources")
+	css := filepath.Join(resources, theme+"-all.css")
+	info, err := os.Stat(css)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return "", "", nil
+		}
+		return "", "", fmt.Errorf("stat SDK theme stylesheet %s: %w", css, err)
+	}
+	if !info.Mode().IsRegular() {
+		return "", "", nil
+	}
+	return css, resources, nil
+}
+
+func copySDKThemeResources(sourceRoot, outputRoot, toolkit string) ([]string, error) {
+	if sourceRoot == "" {
+		return nil, nil
+	}
+	targetRoot := filepath.Join(outputRoot, "resources")
+	if toolkit != "" {
+		targetRoot = filepath.Join(targetRoot, toolkit, "resources")
+	}
+	written := make(map[string]string)
+	if err := filepath.WalkDir(sourceRoot, func(source string, entry fs.DirEntry, walkErr error) error {
+		if walkErr != nil {
+			return walkErr
+		}
+		if entry.Type()&os.ModeSymlink != 0 {
+			if entry.IsDir() {
+				return filepath.SkipDir
+			}
+			return nil
+		}
+		if entry.IsDir() {
+			return nil
+		}
+		relative, err := filepath.Rel(sourceRoot, source)
+		if err != nil {
+			return err
+		}
+		destination := filepath.Join(targetRoot, relative)
+		if err := copyResourceFile(source, destination, written, true); err != nil {
+			return err
+		}
+		return nil
+	}); err != nil {
+		return nil, fmt.Errorf("copy SDK theme resources %s: %w", sourceRoot, err)
+	}
+	paths := make([]string, 0, len(written))
+	for path := range written {
+		paths = append(paths, path)
+	}
+	sort.Strings(paths)
+	return paths, nil
+}
+
+func writeCombinedAppCSS(outputRoot, appName, toolkit, themeCSS string, stylesheets []StyleSheet, resourcePaths []string) (string, string, error) {
+	cssDir := filepath.Join(outputRoot, "resources")
+	if toolkit != "" {
+		cssDir = filepath.Join(cssDir, toolkit, "resources")
+	}
+	combinedURL := filepath.ToSlash(filepath.Join("resources", toolkit, "resources", appName+"-all.css"))
+	if toolkit == "" {
+		combinedURL = filepath.ToSlash(filepath.Join("resources", appName+"-all.css"))
+	}
+	combinedPath := filepath.Join(cssDir, appName+"-all.css")
+	for _, resourcePath := range resourcePaths {
+		if filepath.Clean(resourcePath) == filepath.Clean(combinedPath) {
+			return "", "", fmt.Errorf("resource output %s conflicts with generated combined CSS", combinedURL)
+		}
+	}
+	type cssSource struct {
+		path string
+		data []byte
+	}
+	var sources []cssSource
+	if themeCSS != "" {
+		target := filepath.Join(cssDir, filepath.Base(themeCSS))
+		data, err := os.ReadFile(themeCSS)
+		if err != nil {
+			return "", "", fmt.Errorf("read SDK theme stylesheet %s: %w", themeCSS, err)
+		}
+		sources = append(sources, cssSource{path: target, data: data})
+	}
+	for _, stylesheet := range stylesheets {
+		if stylesheet.Remote {
+			continue
+		}
+		if filepath.Clean(stylesheet.Path) == filepath.Clean(combinedPath) {
+			return "", "", fmt.Errorf("configured stylesheet output %s conflicts with generated combined CSS", combinedURL)
+		}
+		data, err := os.ReadFile(stylesheet.Path)
+		if err != nil {
+			return "", "", fmt.Errorf("read stylesheet %s: %w", stylesheet.Path, err)
+		}
+		sources = append(sources, cssSource{path: stylesheet.Path, data: data})
+	}
+	if len(sources) == 0 {
+		return "", "", nil
+	}
+	if err := os.MkdirAll(cssDir, 0o755); err != nil {
+		return "", "", fmt.Errorf("create combined CSS directory: %w", err)
+	}
+	var combined strings.Builder
+	for _, source := range sources {
+		content := rebaseCSSURLs(string(source.data), source.path, combinedPath, outputRoot)
+		if combined.Len() > 0 {
+			previous := combined.String()
+			if previous[len(previous)-1] != '\n' {
+				combined.WriteByte('\n')
+			}
+		}
+		combined.WriteString(content)
+		if !strings.HasSuffix(content, "\n") {
+			combined.WriteByte('\n')
+		}
+	}
+	if err := writeFileAtomic(combinedPath, []byte(combined.String())); err != nil {
+		return "", "", fmt.Errorf("write combined CSS %s: %w", combinedPath, err)
+	}
+	return combinedPath, combinedURL, nil
+}
+
+func rebaseCSSURLs(css, sourcePath, combinedPath, outputRoot string) string {
+	return cssURLPattern.ReplaceAllStringFunc(css, func(match string) string {
+		groups := cssURLPattern.FindStringSubmatch(match)
+		value := groups[1]
+		quote := `"`
+		if value == "" && groups[2] != "" {
+			value = groups[2]
+			quote = "'"
+		} else if value == "" {
+			value = strings.TrimSpace(groups[3])
+			quote = ""
+		}
+		trimmed := strings.TrimSpace(value)
+		lower := strings.ToLower(trimmed)
+		if trimmed == "" || strings.HasPrefix(trimmed, "#") || strings.HasPrefix(trimmed, "/") || strings.HasPrefix(trimmed, "//") || strings.HasPrefix(lower, "data:") || strings.HasPrefix(lower, "http:") || strings.HasPrefix(lower, "https:") || strings.HasPrefix(lower, "blob:") || strings.HasPrefix(lower, "var(") {
+			return match
+		}
+		pathPart, suffix := trimmed, ""
+		if index := strings.IndexAny(pathPart, "?#"); index >= 0 {
+			suffix, pathPart = pathPart[index:], pathPart[:index]
+		}
+		if pathPart == "" {
+			return match
+		}
+		assetPath := filepath.Clean(filepath.Join(filepath.Dir(sourcePath), filepath.FromSlash(pathPart)))
+		if !isPathWithin(assetPath, outputRoot) {
+			return match
+		}
+		rebased, err := filepath.Rel(filepath.Dir(combinedPath), assetPath)
+		if err != nil {
+			return match
+		}
+		rebased = filepath.ToSlash(rebased) + suffix
+		return "url(" + quote + rebased + quote + ")"
+	})
 }
 
 func resolveScripts(appRoot, appName string, entries []jsEntry, toolkit string, ignore []*regexp.Regexp) ([]resolvedScript, []string, error) {

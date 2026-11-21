@@ -99,6 +99,14 @@ func TestBuildJSONWritesAssetManifestToStdout(t *testing.T) {
 	}}; !reflect.DeepEqual(got, want) {
 		t.Fatalf("manifest CSS = %#v, want %#v", got, want)
 	}
+	wantCombinedCSS := compiler.ManifestAsset{
+		URL:  "/static/example/resources/modern/resources/Example-all.css",
+		Path: "resources/modern/resources/Example-all.css",
+		File: filepath.Join(appDir, "out", "resources", "modern", "resources", "Example-all.css"),
+	}
+	if manifest.CombinedCSS == nil || *manifest.CombinedCSS != wantCombinedCSS {
+		t.Fatalf("manifest combined CSS = %#v, want %#v", manifest.CombinedCSS, wantCombinedCSS)
+	}
 	if got, want := manifest.JS, []compiler.ManifestAsset{
 		{URL: "/static/example/js/vendor.js", Path: "js/vendor.js", File: filepath.Join(appDir, "out", "js", "vendor.js")},
 		{URL: "/static/example/app.js", Path: "app.js", File: filepath.Join(appDir, "out", "app.js")},
@@ -115,8 +123,8 @@ func TestBuildJSONWritesAssetManifestToStdout(t *testing.T) {
 	}}; !reflect.DeepEqual(got, want) {
 		t.Fatalf("manifest resource files = %#v, want %#v", got, want)
 	}
-	if len(manifest.Files) != 4 {
-		t.Fatalf("manifest file list = %#v, want JS, CSS, and resource outputs", manifest.Files)
+	if len(manifest.Files) != 5 {
+		t.Fatalf("manifest file list = %#v, want JS, individual/combined CSS, and resource outputs", manifest.Files)
 	}
 	bundle, err := os.ReadFile(filepath.Join(appDir, "out", "app.js"))
 	if err != nil {

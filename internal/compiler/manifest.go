@@ -27,6 +27,7 @@ type AssetManifest struct {
 	OutputDir         string          `json:"outputDir"`
 	BasePath          string          `json:"basePath"`
 	CSS               []ManifestAsset `json:"css"`
+	CombinedCSS       *ManifestAsset  `json:"combinedCSS,omitempty"`
 	JS                []ManifestAsset `json:"js"`
 	Resources         string          `json:"resources"`
 	ResourceFiles     []ManifestFile  `json:"resourceFiles"`
@@ -66,6 +67,14 @@ func NewAssetManifest(result BuildResult, basePath string) AssetManifest {
 			manifest.Files = appendUniqueManifestFile(manifest.Files, seenFiles, ManifestFile{Kind: "css", Path: asset.Path, File: asset.File})
 		}
 		manifest.CSS = append(manifest.CSS, asset)
+	}
+	if result.CombinedCSSPath != "" {
+		asset := ManifestAsset{
+			URL: resolveManifestURL(basePath, result.CombinedCSSURL, false),
+		}
+		asset.Path, asset.File = manifestFileLocation(outputDir, result.CombinedCSSPath, result.CombinedCSSURL)
+		manifest.CombinedCSS = &asset
+		manifest.Files = appendUniqueManifestFile(manifest.Files, seenFiles, ManifestFile{Kind: "css", Path: asset.Path, File: asset.File})
 	}
 	for _, script := range result.Scripts {
 		asset := ManifestAsset{

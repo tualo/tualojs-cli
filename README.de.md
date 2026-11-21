@@ -101,7 +101,7 @@ Eine Anwendung bauen. Ihr Verzeichnis kann mit `-app` angegeben werden:
   -minify
 ```
 
-Ist das Toolkit bereits in `app.json` festgelegt, kann `-toolkit` entfallen. Für Universal Apps `classic` oder `modern` auswählen. `app.js` und alle erzeugten oder kopierten Dateien werden im Ausgabeverzeichnis abgelegt.
+Ist das Toolkit bereits in `app.json` festgelegt, kann `-toolkit` entfallen. Für Universal Apps `classic` oder `modern` auswählen. `app.js` und alle erzeugten oder kopierten Dateien werden im Ausgabeverzeichnis abgelegt. Mit CSS-Quellen erzeugt der Build außerdem `resources/<toolkit>/resources/<app-name>-all.css` aus dem SDK-Theme-CSS, lokalen `app.json.css`-Stylesheets und dem kompilierten `app-sass.css`.
 
 Während der Entwicklung den lokalen Watch- und Preview-Server starten:
 
@@ -148,7 +148,7 @@ Das Manifest kann einem Deployment-Werkzeug mitteilen, wo erzeugte CSS-, JavaScr
   -base-path /assets/meine-ext-js-app/
 ```
 
-Das JSON wird nach stdout geschrieben; Build-Warnungen erscheinen auf stderr. Die Felder des Manifests sind in [`docs/43-json-asset-manifest.md`](docs/43-json-asset-manifest.md) beschrieben.
+Das JSON wird nach stdout geschrieben; Build-Warnungen erscheinen auf stderr. Das Feld `combinedCSS` verweist auf die erzeugte `<app-name>-all.css`, sofern CSS-Quellen vorhanden sind. Die Felder des Manifests sind in [`docs/43-json-asset-manifest.md`](docs/43-json-asset-manifest.md) beschrieben.
 
 ## Kompatibilität und Einschränkungen
 

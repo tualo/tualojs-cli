@@ -636,6 +636,56 @@ func TestBuildCopiesConfiguredResources(t *testing.T) {
 	}
 }
 
+func TestBuildWritesCombinedAppCSSWithSDKThemeAndAppStyles(t *testing.T) {
+	root := makeFixture(t, map[string]string{
+		"app.json":                       `{"name":"Example","namespace":"Example","toolkit":"modern","classpath":["app"],"resources":[{"path":"resources"}],"css":[{"path":"styles/app.css"}],"js":[{"path":"app.js","bundle":true}]}`,
+		"workspace.json":                 `{"frameworks":{"ext":{"path":"sdk","version":"8.0.0.43"}}}`,
+		"sdk/package.json":               `{"name":"ext","version":"8.0.0.43","compatVersion":"8.0.0"}`,
+		"sdk/packages/core/package.json": `{"version":"8.0.0.43","sencha":{"name":"core","classpath":"${package.dir}/src"}}`,
+		"sdk/modern/modern/package.json": `{"version":"8.0.0.43","sencha":{"name":"modern","requires":["core"],"classpath":"${package.dir}/src"}}`,
+		"sdk/build/modern/theme-material/resources/theme-material-all.css": `.theme{background:url(images/bg.png)}`,
+		"sdk/build/modern/theme-material/resources/images/bg.png":          "theme image",
+		"app.js":                   `Ext.application({name: 'Example'});`,
+		"app/Main.js":              `Ext.define('Example.Main', {});`,
+		"styles/app.css":           `.app{background:url(../resources/images/app.png)}`,
+		"resources/images/app.png": "app image",
+	})
+
+	result, err := Build(root, "out")
+	if err != nil {
+		t.Fatal(err)
+	}
+	wantPath := filepath.Join(root, "out", "resources", "modern", "resources", "Example-all.css")
+	if result.CombinedCSSPath != wantPath || result.CombinedCSSURL != "resources/modern/resources/Example-all.css" {
+		t.Fatalf("combined CSS result = (%q, %q), want (%q, %q)", result.CombinedCSSPath, result.CombinedCSSURL, wantPath, "resources/modern/resources/Example-all.css")
+	}
+	data, err := os.ReadFile(wantPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	content := string(data)
+	themeIndex := strings.Index(content, ".theme{")
+	appIndex := strings.Index(content, ".app{")
+	if themeIndex < 0 || appIndex < 0 || themeIndex >= appIndex {
+		t.Fatalf("combined CSS order/content = %q, want theme CSS before app CSS", content)
+	}
+	if !strings.Contains(content, "url(images/bg.png)") || !strings.Contains(content, "url(../../images/app.png)") {
+		t.Fatalf("combined CSS URLs were not preserved/rebased: %q", content)
+	}
+	for _, path := range []string{
+		filepath.Join(root, "out", "resources", "modern", "resources", "images", "bg.png"),
+		filepath.Join(root, "out", "resources", "images", "app.png"),
+	} {
+		if _, err := os.Stat(path); err != nil {
+			t.Errorf("combined CSS asset %s was not copied: %v", path, err)
+		}
+	}
+	manifest := NewAssetManifest(result, "/assets/example")
+	if manifest.CombinedCSS == nil || manifest.CombinedCSS.URL != "/assets/example/resources/modern/resources/Example-all.css" {
+		t.Fatalf("manifest combined CSS = %#v", manifest.CombinedCSS)
+	}
+}
+
 func TestBuildCompilesSCSSPairedWithClasspathJavaScript(t *testing.T) {
 	root := makeFixture(t, map[string]string{
 		"app.json":                         `{"name":"Example","namespace":"Example","toolkit":"classic","classpath":["app"],"resources":[{"path":"${toolkit.name}/resources"}],"sass":{"etc":"sass/etc/all.scss","var":"sass/var","src":["sass/src","${toolkit.name}/sass/src"]},"css":[{"path":"styles/base.css"}],"js":[{"path":"app.js","bundle":true}]}`,
