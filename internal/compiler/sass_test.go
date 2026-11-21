@@ -224,6 +224,43 @@ $simple-icon-args: parseIconArgs('B' FontAwesome 90);
 	}
 }
 
+func TestCompileClassSassEvaluatesEscapedFontAwesomeIconInterpolations(t *testing.T) {
+	binary := os.Getenv("SASS")
+	if binary == "" {
+		binary = "sass"
+	}
+	if _, err := exec.LookPath(binary); err != nil {
+		t.Skip("Dart Sass is not installed")
+	}
+	root := t.TempDir()
+	source := filepath.Join(root, "all.scss")
+	icons := filepath.Join(root, "_icons.scss")
+	if err := os.WriteFile(source, []byte(`@import "icons";`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(icons, []byte(`$fa-icons: ("0": '\30', "check": '\f00c');
+$fa-brand-icons: ("brand-check": '\f00c');
+@each $name, $icon in $fa-icons {
+  .fa-#{$name}::before { content: unquote("\"\#{ $icon }\""); }
+}
+@each $name, $icon in $fa-brand-icons {
+  .fab-#{$name}:before { content: unquote("\"\#{ $icon }\""); }
+}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	css, warnings, err := compileClassSassWithInlineImports(root, []string{source}, false, nil, nil, nil, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(warnings) != 0 {
+		t.Fatalf("Font Awesome Sass warnings = %#v, want none", warnings)
+	}
+	content := string(css)
+	if strings.Contains(content, `#{ $icon }`) || !strings.Contains(content, `.fa-0::before`) || !strings.Contains(content, `.fa-check::before`) || !strings.Contains(content, `.fab-brand-check:before`) || !strings.Contains(content, `content: "\f00c"`) {
+		t.Fatalf("Font Awesome icon interpolation was not compiled: %s", content)
+	}
+}
+
 func TestCollectFashionJavaScriptFunctionUses(t *testing.T) {
 	root := makeFixture(t, map[string]string{
 		"unused.scss": `$sass-map: map-merge((a: 1), (b: 2));`,

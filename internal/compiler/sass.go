@@ -22,6 +22,7 @@ var sassMixinInclude = regexp.MustCompile(`@include[\t ]+([a-zA-Z_-][a-zA-Z0-9_-
 var sassIncludeVariableReference = regexp.MustCompile(`\$(include-[a-zA-Z0-9_-]+)`)
 var sassFunctionDefinition = regexp.MustCompile(`(?m)^[\t ]*@function[\t ]+([a-zA-Z_-][a-zA-Z0-9_-]*)`)
 var sassScopedCallableDefinition = regexp.MustCompile(`(?m)^[\t ]*@(function|mixin)[\t ]+[a-zA-Z_-][a-zA-Z0-9_-]*[\t ]*\(`)
+var fontAwesomeEscapedIconInterpolation = regexp.MustCompile(`\\#\{\s*\$icon\s*\}`)
 var sassParameterName = regexp.MustCompile(`^[\t ]*\$([a-zA-Z_][a-zA-Z0-9_-]*)`)
 var fashionJavaScriptFunctionCall = regexp.MustCompile(`(?i)\b(map_merge|intersect[-_]arguments)[\t\r\n ]*\(`)
 var fashionNullSafeBoxRotationAssignment = regexp.MustCompile(`(?i)^(?:rotate90|rotate180|rotate270)[\t ]*\([\t ]*\$([a-zA-Z_][a-zA-Z0-9_-]*)[\t ]*\)$`)
@@ -257,6 +258,30 @@ func resolvePackageSassEtcSources(appRoot string, roots []packageSassEtcRoot, ig
 		}
 	}
 	return uniquePaths(sources), uniquePaths(themeSources), uniquePaths(watchPaths), warnings, nil
+}
+
+func normalizeFontAwesomeIconInterpolations(source []byte) []byte {
+	if !bytes.Contains(source, []byte("$fa-icons")) && !bytes.Contains(source, []byte("$fa-brand-icons")) {
+		return source
+	}
+	return fontAwesomeEscapedIconInterpolation.ReplaceAllLiteral(source, []byte("#{ $icon }"))
+}
+
+func sassImportTreeNeedsFontAwesomeNormalization(appRoot, source string) (bool, error) {
+	imports, err := resolveSassImportWatchPaths(appRoot, []string{source})
+	if err != nil {
+		return false, err
+	}
+	for _, path := range append([]string{source}, imports...) {
+		data, err := os.ReadFile(path)
+		if err != nil {
+			return false, fmt.Errorf("read Sass import %s: %w", path, err)
+		}
+		if (bytes.Contains(data, []byte("$fa-icons")) || bytes.Contains(data, []byte("$fa-brand-icons"))) && fontAwesomeEscapedIconInterpolation.Match(data) {
+			return true, nil
+		}
+	}
+	return false, nil
 }
 
 func resolveThemeSassHelperSources(appRoot string, roots []string, packageRoots []packageSassEtcRoot, ignore []*regexp.Regexp) ([]string, error) {
@@ -1811,6 +1836,7 @@ func inlineSassImports(appRoot, importer string, source []byte, availableVariabl
 	active := make(map[string]bool)
 	var expand func(string, []byte) ([]byte, error)
 	expand = func(current string, data []byte) ([]byte, error) {
+		data = normalizeFontAwesomeIconInterpolations(data)
 		data = stripFashionThemeBackgroundImageFunction(data)
 		data, _ = normalizeFashionNullDarkenAssignments(data, nullVariables)
 		data, _, _ = normalizeFashionResourcePaths(data)
@@ -2392,6 +2418,22 @@ func compileClassSassWithInlineImports(appRoot string, sources []string, minify 
 		return nil, nil, err
 	}
 	allSources := append(append([]string{}, sources...), importedSources...)
+	inlineSources := make(map[string]bool, len(inlineImports)+len(sources))
+	for source, inline := range inlineImports {
+		inlineSources[source] = inline
+	}
+	for _, source := range sources {
+		if inlineSources[source] {
+			continue
+		}
+		needsNormalization, err := sassImportTreeNeedsFontAwesomeNormalization(appRoot, source)
+		if err != nil {
+			return nil, nil, err
+		}
+		if needsNormalization {
+			inlineSources[source] = true
+		}
+	}
 	usedFashionJSFunctions, err := collectFashionJavaScriptFunctionUses(allSources)
 	if err != nil {
 		return nil, nil, err
@@ -2607,7 +2649,7 @@ $output-paths: null !default;
 		}
 		normalized, dynamicChanged, reason := normalizeFashionDynamic(data)
 		if reason != "" {
-			if !inlineImports[source] {
+			if !inlineSources[source] {
 				warnings = append(warnings, fmt.Sprintf("skipped Fashion-dependent Sass source %s: %s", source, reason))
 				continue
 			}
@@ -2619,19 +2661,19 @@ $output-paths: null !default;
 			dynamicChanged = true
 		}
 		if reason := unsupportedFashionSource(normalized); reason != "" {
-			if !inlineImports[source] || !strings.Contains(reason, "dynamic()") {
+			if !inlineSources[source] || !strings.Contains(reason, "dynamic()") {
 				warnings = append(warnings, fmt.Sprintf("skipped Fashion-dependent Sass source %s: %s", source, reason))
 				continue
 			}
 		}
-		if dynamicChanged || inlineImports[source] || imageChanged || nestedMixinChanged || resourcePathChanged {
+		if dynamicChanged || inlineSources[source] || imageChanged || nestedMixinChanged || resourcePathChanged {
 			var importWarnings []string
 			normalized, importWarnings, err = inlineSassImports(appRoot, source, normalized, availableVariables, skipImports, usedFashionJSFunctions, nullVariables)
 			if err != nil {
 				return nil, warnings, fmt.Errorf("normalize Sass imports in %s: %w", source, err)
 			}
 			warnings = append(warnings, importWarnings...)
-			if (inlineImports[source] || dynamicChanged) && sassSourceNeedsTrailingSemicolon(normalized) {
+			if (inlineSources[source] || dynamicChanged) && sassSourceNeedsTrailingSemicolon(normalized) {
 				normalized = append(normalized, []byte("\n;\n")...)
 			}
 			entry.Write(normalized)
