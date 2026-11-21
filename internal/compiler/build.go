@@ -507,7 +507,6 @@ func BuildWithBundleOptions(appDir, outputDir, selectedToolkit, selectedPlatform
 	if err != nil {
 		return BuildResult{}, err
 	}
-	resourceFiles := len(resourcePaths)
 	copiedStylesheets, err := copyStylesheets(styleSheets, outputRoot, outputPath)
 	if err != nil {
 		return BuildResult{}, err
@@ -537,7 +536,7 @@ func BuildWithBundleOptions(appDir, outputDir, selectedToolkit, selectedPlatform
 	if err != nil {
 		return BuildResult{}, err
 	}
-	resourceFiles = len(resourcePaths)
+	resourceFiles := len(resourcePaths)
 	jsAssets, err := copyScripts(scripts, outputRoot, outputPath)
 	if err != nil {
 		return BuildResult{}, err
