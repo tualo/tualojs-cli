@@ -709,12 +709,19 @@ $color: dynamic(#000);
 $grid-header-background-color: dynamic(#ddd);
 $grid-header-background-gradient: dynamic('grid-header');
 $grid-header-border-color: dynamic(#333);
+$button-small-font-family: dynamic($font-family);
 $grid-column-header-color: dynamic($color);
 $grid-column-header-font-weight: dynamic(300);
 $grid-column-header-font-size: dynamic(13px);
 $grid-column-header-line-height: dynamic(15px);
 $grid-column-header-font-family: dynamic($font-family);
-$grid-column-header-font: dynamic($grid-column-header-font-weight #{$grid-column-header-font-size}/#{$grid-column-header-line-height} $grid-column-header-font-family);`,
+$grid-column-header-font: dynamic($grid-column-header-font-weight #{$grid-column-header-font-size}/#{$grid-column-header-line-height} $grid-column-header-font-family);
+$form-field-padding: dynamic(1px 3px 2px);
+$form-field-height: dynamic(24px);
+$form-text-field-padding: dynamic($form-field-padding);
+$form-text-field-height: dynamic($form-field-height);
+$button-default-background-color: dynamic(gray);
+$panel-header-background-color: dynamic(#808080);`,
 		"sdk/packages/theme-neptune/package.json":             `{"version":"1.0.0","sencha":{"name":"theme-neptune","type":"theme","toolkit":"classic","extend":"theme-neutral","classpath":"${package.dir}/src","sass":{"var":"${package.dir}/sass/var"}}}`,
 		"sdk/packages/theme-neptune/sass/var/GridHeader.scss": `$grid-header-background-gradient: dynamic('none');`,
 		"sdk/packages/theme-triton/package.json":              `{"version":"1.0.0","sencha":{"name":"theme-triton","type":"theme","toolkit":"classic","extend":"theme-neptune","classpath":"${package.dir}/src","resources":[{"path":"${package.dir}/resources","output":"shared"}],"sass":{"var":"${package.dir}/sass/var","src":"${package.dir}/sass/src"}}}`,
@@ -725,12 +732,16 @@ $font-family: dynamic('Open Sans', 'Helvetica Neue', helvetica, arial, verdana, 
 $grid-column-header-color: dynamic($color);
 $grid-column-header-font-weight: dynamic(400);
 $grid-column-header-line-height: dynamic(19px);
+$button-default-background-color: dynamic($base-color);
+$panel-header-background-color: dynamic($base-color);
 $theme-component-color: #c30;
 $theme-icon: 'loadmask/loading';`,
 		"sdk/packages/theme-triton/sass/var/Column.scss": `$grid-column-header-font-weight: dynamic(400);
 $grid-column-header-line-height: dynamic(19px);
 $grid-header-background-color: dynamic(#fff);
 $grid-header-border-color: dynamic(#d0d0d0);`,
+		"sdk/packages/theme-triton/sass/var/form/field/Base.scss": `$form-field-padding: dynamic(5px 10px 4px);
+$form-field-height: dynamic(32px);`,
 		"sdk/packages/theme-triton/sass/var/Menu.scss":   `$menu-item-active-background-color: dynamic($base-highlight-color);`,
 		"sdk/packages/theme-triton/sass/var/Mixins.scss": `@mixin theme-component-color { color: $theme-component-color; }`,
 		"sdk/packages/theme-triton/sass/src/Component.scss": `.x-component { @include theme-component-color; background-image: theme-background-image($theme-icon, 'gif'); }
@@ -739,7 +750,11 @@ $grid-header-border-color: dynamic(#d0d0d0);`,
   @if not is-null($grid-column-header-color) { color: $grid-column-header-color; }
   font: $grid-column-header-font;
 }
-.x-grid-header-ct { background-color: $grid-header-background-color; border-color: $grid-header-border-color; }`,
+.x-grid-header-ct { background-color: $grid-header-background-color; border-color: $grid-header-border-color; }
+.x-form-text-default { padding: $form-text-field-padding; min-height: $form-text-field-height; }
+.x-btn-default-small { background-color: $button-default-background-color; }
+.x-btn-inner-default-small { font-family: $button-small-font-family; }
+.x-panel-header-default { background-color: $panel-header-background-color; }`,
 		"sdk/packages/theme-triton/resources/images/loadmask/loading.gif": "theme image",
 		"sass/var/Theme.scss": `$theme-component-color: #0c3;`,
 		"app.js":              `Ext.application({name: 'Example', extend: 'Example.Main'});`,
@@ -769,6 +784,15 @@ $grid-header-border-color: dynamic(#d0d0d0);`,
 	if !strings.Contains(string(data), `"Open Sans", "Helvetica Neue"`) || !strings.Contains(string(data), ".x-grid-header-ct") || !strings.Contains(string(data), "background-color: #fff") || !strings.Contains(string(data), "border-color: #d0d0d0") {
 		t.Fatalf("child theme header font/background was not applied: %q", data)
 	}
+	if !strings.Contains(string(data), ".x-form-text-default") || !strings.Contains(string(data), "padding: 5px 10px 4px") || !strings.Contains(string(data), "min-height: 32px") {
+		t.Fatalf("child theme form-field variables were not applied: %q", data)
+	}
+	if !strings.Contains(string(data), ".x-btn-default-small") || !strings.Contains(string(data), "background-color: #5fa2dd") || !strings.Contains(string(data), ".x-panel-header-default") {
+		t.Fatalf("child theme button/panel variables were not applied: %q", data)
+	}
+	if !strings.Contains(string(data), ".x-btn-inner-default-small") || !strings.Contains(string(data), `font-family: "Open Sans", "Helvetica Neue"`) {
+		t.Fatalf("child theme button font fallback was not applied: %q", data)
+	}
 	if strings.Contains(string(data), "column-header-bg.gif") {
 		t.Fatalf("disabled Triton header gradient unexpectedly emitted sliced-image CSS: %q", data)
 	}
@@ -784,6 +808,12 @@ $grid-header-border-color: dynamic(#d0d0d0);`,
 	}
 	if !strings.Contains(string(combined), ".x-column-header") || !strings.Contains(string(combined), "color: #404040") || !strings.Contains(string(combined), "font: 400 13px/19px") {
 		t.Fatalf("combined CSS lost child theme column-header styles: %q", combined)
+	}
+	if !strings.Contains(string(combined), ".x-btn-default-small") || !strings.Contains(string(combined), "background-color: #5fa2dd") || !strings.Contains(string(combined), ".x-panel-header-default") {
+		t.Fatalf("combined CSS lost child theme button/panel styles: %q", combined)
+	}
+	if !strings.Contains(string(combined), ".x-btn-inner-default-small") || !strings.Contains(string(combined), `font-family: "Open Sans", "Helvetica Neue"`) {
+		t.Fatalf("combined CSS lost child theme button font fallback: %q", combined)
 	}
 	if !strings.Contains(string(combined), `"Open Sans", "Helvetica Neue"`) || !strings.Contains(string(combined), ".x-grid-header-ct") || !strings.Contains(string(combined), "background-color: #fff") || !strings.Contains(string(combined), "border-color: #d0d0d0") {
 		t.Fatalf("combined CSS lost child theme header font/background: %q", combined)

@@ -38,7 +38,9 @@ func TestCompileClassSassProvidesCornerRadiusMixins(t *testing.T) {
     @include border-top-right-radius(4px);
     @include border-bottom-right-radius(4px);
     @include border-bottom-left-radius(4px);
-}`), 0o644); err != nil {
+}
+.rounded-top { @include border-top-radius(6px); }
+.rounded-bottom { @include border-bottom-radius(8px); }`), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	css, _, err := compileClassSass(root, []string{source}, false)
@@ -50,6 +52,10 @@ func TestCompileClassSassProvidesCornerRadiusMixins(t *testing.T) {
 		"border-top-right-radius: 4px",
 		"border-bottom-right-radius: 4px",
 		"border-bottom-left-radius: 4px",
+		"border-top-right-radius: 6px",
+		"border-top-left-radius: 6px",
+		"border-bottom-right-radius: 8px",
+		"border-bottom-left-radius: 8px",
 	} {
 		if !bytes.Contains(css, []byte(property)) {
 			t.Errorf("compiled CSS is missing %q: %s", property, css)

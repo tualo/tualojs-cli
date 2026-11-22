@@ -1102,12 +1102,12 @@ func themeSassVariableOverrides(sources []string) ([]byte, error) {
 }
 
 func isThemeVariableForCascadeReplay(name string) bool {
-	switch name {
-	case "grid-column-header-color", "grid-column-header-font", "grid-column-header-font-family", "grid-column-header-font-size", "grid-column-header-font-weight", "grid-column-header-line-height", "grid-header-background-color", "grid-header-background-gradient", "grid-header-border-color":
-		return true
-	default:
-		return strings.HasPrefix(name, "menu-item-active-")
+	for _, prefix := range []string{"grid-column-header-", "menu-item-active-", "button-default-", "button-small-font-family", "button-medium-font-family", "button-large-font-family", "panel-header-", "form-field-", "form-text-field-"} {
+		if strings.HasPrefix(name, prefix) {
+			return true
+		}
 	}
+	return name == "grid-header-background-color" || name == "grid-header-background-gradient" || name == "grid-header-border-color"
 }
 
 type sassVariableAssignment struct {
