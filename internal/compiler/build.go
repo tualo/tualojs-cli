@@ -246,7 +246,12 @@ func BuildWithBundleOptions(appDir, outputDir, selectedToolkit, selectedPlatform
 	if err != nil {
 		return BuildResult{}, err
 	}
-	sassSources := uniquePaths(append(append(append(append(append(append(append(append(appSassEtc, themeSassHelperSources...), packageSassEtcSources...), packageSassVarSources...), packageThemeSassEtcSources...), appSassVar...), packageSassSources...), appSassSrc...), classSassSources...))
+	packageSassMixinSources, err := sassSourcesWithMixinDefinitions(packageSassVarWatchPaths)
+	if err != nil {
+		return BuildResult{}, err
+	}
+	packageSassVarAndMixins := append(append([]string{}, packageSassVarSources...), packageSassMixinSources...)
+	sassSources := uniquePaths(append(append(append(append(append(append(append(append(appSassEtc, themeSassHelperSources...), packageSassEtcSources...), packageSassVarAndMixins...), packageThemeSassEtcSources...), appSassVar...), packageSassSources...), appSassSrc...), classSassSources...))
 	if len(sassSources) > 0 && toolkit == "" {
 		return BuildResult{}, fmt.Errorf("sass compilation requires a selected toolkit; pass -toolkit classic or -toolkit modern")
 	}
@@ -446,6 +451,16 @@ func BuildWithBundleOptions(appDir, outputDir, selectedToolkit, selectedPlatform
 	entryName, _ := filepath.Rel(root, entryPath)
 	entry := sourceFile{path: entryPath, name: filepath.ToSlash(entryName), data: entryData, originalData: entryOriginalData}
 	ordered = append(ordered, entry)
+	loadedSassClassPaths := make([]string, 0, len(ordered)+len(frameworkClasses))
+	for _, source := range ordered {
+		loadedSassClassPaths = append(loadedSassClassPaths, source.path)
+	}
+	for _, className := range frameworkClasses {
+		if frameworkPath := frameworkFiles[className]; frameworkPath != "" {
+			loadedSassClassPaths = append(loadedSassClassPaths, frameworkPath)
+		}
+	}
+	sassSources = filterThemePackageSassSources(sassSources, packageSassRoots, loadedSassClassPaths)
 	sourceFiles := make(map[string]string, len(ordered))
 	for _, source := range ordered {
 		sourceFiles[source.name] = source.path

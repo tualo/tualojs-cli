@@ -165,7 +165,7 @@ func expandPackageClassSassRoots(pkg *sdkPackage, toolkit, locale string) ([]pac
 			if !isPathWithin(sassRoot, pkg.root) {
 				return nil, nil, fmt.Errorf("package %q Sass source escapes package directory", pkg.manifest.Sencha.Name)
 			}
-			roots = append(roots, packageSassSourceRoot{SassPath: sassRoot, Package: pkg.manifest.Sencha.Name, EntryFile: true})
+			roots = append(roots, packageSassSourceRoot{SassPath: sassRoot, Package: pkg.manifest.Sencha.Name, EntryFile: true, Theme: pkg.manifest.Sencha.Type == "theme"})
 			continue
 		}
 		if !strings.HasSuffix(sassSlash, "/sass/src") {
@@ -176,7 +176,7 @@ func expandPackageClassSassRoots(pkg *sdkPackage, toolkit, locale string) ([]pac
 		if !isPathWithin(sassRoot, pkg.root) || !isPathWithin(classRoot, pkg.root) {
 			return nil, nil, fmt.Errorf("package %q Sass path escapes package directory", pkg.manifest.Sencha.Name)
 		}
-		roots = append(roots, packageSassSourceRoot{SassPath: sassRoot, ClassPath: classRoot, Package: pkg.manifest.Sencha.Name})
+		roots = append(roots, packageSassSourceRoot{SassPath: sassRoot, ClassPath: classRoot, Package: pkg.manifest.Sencha.Name, Theme: pkg.manifest.Sencha.Type == "theme"})
 	}
 	return roots, warnings, nil
 }
@@ -196,6 +196,50 @@ func uniquePackageSassSourceRoots(roots []packageSassSourceRoot) []packageSassSo
 		unique = append(unique, root)
 	}
 	return unique
+}
+
+func filterThemePackageSassSources(sources []string, roots []packageSassSourceRoot, loadedClassPaths []string) []string {
+	loaded := make([]string, 0, len(loadedClassPaths))
+	for _, path := range loadedClassPaths {
+		loaded = append(loaded, "/"+strings.Trim(filepath.ToSlash(filepath.Clean(path)), "/"))
+	}
+	filtered := make([]string, 0, len(sources))
+	for _, source := range sources {
+		explicitEntry := false
+		for _, root := range roots {
+			if root.Theme && root.EntryFile && filepath.Clean(source) == filepath.Clean(root.SassPath) {
+				explicitEntry = true
+				break
+			}
+		}
+		include := explicitEntry
+		if !explicitEntry {
+			include = true
+			for _, root := range roots {
+				if !root.Theme || root.EntryFile || !isPathWithin(source, root.SassPath) {
+					continue
+				}
+				relative, err := filepath.Rel(root.SassPath, source)
+				if err != nil {
+					include = false
+					break
+				}
+				classSuffix := "/" + strings.TrimSuffix(filepath.ToSlash(relative), filepath.Ext(relative)) + ".js"
+				include = false
+				for _, classPath := range loaded {
+					if strings.HasSuffix(classPath, classSuffix) {
+						include = true
+						break
+					}
+				}
+				break
+			}
+		}
+		if include {
+			filtered = append(filtered, source)
+		}
+	}
+	return filtered
 }
 
 func resolvePackageSassEtcSources(appRoot string, roots []packageSassEtcRoot, ignore []*regexp.Regexp) ([]string, []string, []string, []string, error) {
@@ -451,10 +495,8 @@ func normalizeThemeBackgroundImages(sourcePath string, source []byte) ([]byte, b
 		changed = true
 		return []byte(`url("` + resourcePrefix + path + `")`)
 	})
-	if unsupported || themeBackgroundImageCall.Match(output) {
-		if !themeBackgroundImageOnlyInMixins(source) {
-			return nil, false, "theme-background-image requires static package image paths outside Sass mixins"
-		}
+	if unsupported {
+		return nil, false, "theme-background-image uses an unsupported static package image path"
 	}
 	return output, changed, ""
 }
@@ -511,23 +553,6 @@ func stripFashionThemeBackgroundImageFunction(source []byte) []byte {
 		}
 		source = append(append([]byte(nil), source[:match[0]]...), source[end:]...)
 	}
-}
-
-func themeBackgroundImageOnlyInMixins(source []byte) bool {
-	if !sassMixinDefinition.Match(source) {
-		return false
-	}
-	depth := 0
-	for _, line := range strings.Split(string(source), "\n") {
-		if strings.Contains(line, "theme-background-image(") && depth == 0 {
-			return false
-		}
-		depth += strings.Count(line, "{") - strings.Count(line, "}")
-		if depth < 0 {
-			depth = 0
-		}
-	}
-	return true
 }
 
 func packageSassEtcHelperRoots(sdkRoot string, sources []string) []packageSassEtcRoot {
@@ -1527,20 +1552,22 @@ func resolvePackageClassSassSources(appRoot string, roots []packageSassSourceRoo
 			if !strings.EqualFold(filepath.Ext(path), ".scss") || isIgnoredProjectPath(appRoot, path, ignore) {
 				return nil
 			}
-			relative, err := filepath.Rel(root.SassPath, path)
-			if err != nil {
-				return err
-			}
-			classPath := filepath.Join(root.ClassPath, strings.TrimSuffix(relative, filepath.Ext(relative))+".js")
-			classInfo, err := os.Stat(classPath)
-			if err != nil {
-				if os.IsNotExist(err) {
+			if !root.Theme {
+				relative, err := filepath.Rel(root.SassPath, path)
+				if err != nil {
+					return err
+				}
+				classPath := filepath.Join(root.ClassPath, strings.TrimSuffix(relative, filepath.Ext(relative))+".js")
+				classInfo, err := os.Stat(classPath)
+				if err != nil {
+					if os.IsNotExist(err) {
+						return nil
+					}
+					return fmt.Errorf("stat package class source %s: %w", classPath, err)
+				}
+				if !classInfo.Mode().IsRegular() {
 					return nil
 				}
-				return fmt.Errorf("stat package class source %s: %w", classPath, err)
-			}
-			if !classInfo.Mode().IsRegular() {
-				return nil
 			}
 			absolute, err := filepath.Abs(path)
 			if err != nil {
@@ -1551,9 +1578,11 @@ func resolvePackageClassSassSources(appRoot string, roots []packageSassSourceRoo
 			if err != nil {
 				return fmt.Errorf("read package Sass source %s: %w", path, err)
 			}
-			if reason := unsupportedPackageSassSource(data, variables); reason != "" {
-				warnings = append(warnings, fmt.Sprintf("skipped package Sass source %s (%s): %s", path, root.Package, reason))
-				return nil
+			if !root.Theme {
+				if reason := unsupportedPackageSassSource(data, variables); reason != "" {
+					warnings = append(warnings, fmt.Sprintf("skipped package Sass source %s (%s): %s", path, root.Package, reason))
+					return nil
+				}
 			}
 			sources = append(sources, absolute)
 			return nil
@@ -1563,6 +1592,20 @@ func resolvePackageClassSassSources(appRoot string, roots []packageSassSourceRoo
 		}
 	}
 	return uniquePaths(sources), uniquePaths(watchPaths), warnings, nil
+}
+
+func sassSourcesWithMixinDefinitions(sources []string) ([]string, error) {
+	var result []string
+	for _, source := range uniquePaths(sources) {
+		data, err := os.ReadFile(source)
+		if err != nil {
+			return nil, fmt.Errorf("read Sass mixin source %s: %w", source, err)
+		}
+		if sassMixinDefinition.Match(data) {
+			result = append(result, source)
+		}
+	}
+	return uniquePaths(result), nil
 }
 
 func collectSassMixinNames(sources []string) (map[string]bool, error) {

@@ -686,6 +686,53 @@ func TestBuildWritesCombinedAppCSSWithSDKThemeAndAppStyles(t *testing.T) {
 	}
 }
 
+func TestBuildCompilesLoadedThemeSassSourcesWithoutPackageJavaScript(t *testing.T) {
+	sassBinary := os.Getenv("SASS")
+	if sassBinary == "" {
+		sassBinary = "sass"
+	}
+	if _, err := exec.LookPath(sassBinary); err != nil {
+		t.Skip("Dart Sass is not installed")
+	}
+	root := makeFixture(t, map[string]string{
+		"app.json":                                          `{"name":"Example","namespace":"Example","toolkit":"classic","theme":"theme-custom","classpath":["app"],"js":[{"path":"app.js","bundle":true}]}`,
+		"workspace.json":                                    `{"frameworks":{"ext":{"path":"sdk","version":"8.0.0.43"}}}`,
+		"sdk/package.json":                                  `{"name":"ext","version":"8.0.0.43","compatVersion":"8.0.0"}`,
+		"sdk/packages/core/package.json":                    `{"version":"8.0.0.43","sencha":{"name":"core","classpath":"${package.dir}/src"}}`,
+		"sdk/packages/core/src/Base.js":                     `Ext.define('Ext.Base', {});`,
+		"sdk/classic/classic/package.json":                  `{"version":"8.0.0.43","sencha":{"name":"classic","toolkit":"classic","requires":["core"],"classpath":"${package.dir}/src"}}`,
+		"sdk/classic/classic/src/Component.js":              `Ext.define('Ext.Component', { extend: 'Ext.Base' });`,
+		"sdk/packages/theme-custom/package.json":            `{"version":"1.0.0","sencha":{"name":"theme-custom","type":"theme","toolkit":"classic","classpath":"${package.dir}/src","sass":{"var":"${package.dir}/sass/var","src":"${package.dir}/sass/src"}}}`,
+		"sdk/packages/theme-custom/sass/var/Component.scss": `$theme-component-color: #c30;`,
+		"sdk/packages/theme-custom/sass/var/Mixins.scss":    `@mixin theme-component-color { color: $theme-component-color; }`,
+		"sdk/packages/theme-custom/sass/src/Component.scss": `.x-component { @include theme-component-color; }`,
+		"app.js":      `Ext.application({name: 'Example', extend: 'Example.Main'});`,
+		"app/Main.js": `Ext.define('Example.Main', { extend: 'Ext.Component' });`,
+	})
+
+	result, err := Build(root, "out")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.CombinedCSSPath == "" {
+		t.Fatal("theme Sass build did not produce a combined stylesheet")
+	}
+	data, err := os.ReadFile(filepath.Join(root, "out", "resources", "classic", "resources", "app-sass.css"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(data), ".x-component") || !strings.Contains(string(data), "color: #c30") {
+		t.Fatalf("compiled theme Sass CSS = %q", data)
+	}
+	combined, err := os.ReadFile(result.CombinedCSSPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(combined), ".x-component") || !strings.Contains(string(combined), "color: #c30") {
+		t.Fatalf("combined theme CSS = %q", combined)
+	}
+}
+
 func TestBuildCompilesSCSSPairedWithClasspathJavaScript(t *testing.T) {
 	root := makeFixture(t, map[string]string{
 		"app.json":                         `{"name":"Example","namespace":"Example","toolkit":"classic","classpath":["app"],"resources":[{"path":"${toolkit.name}/resources"}],"sass":{"etc":"sass/etc/all.scss","var":"sass/var","src":["sass/src","${toolkit.name}/sass/src"]},"css":[{"path":"styles/base.css"}],"js":[{"path":"app.js","bundle":true}]}`,

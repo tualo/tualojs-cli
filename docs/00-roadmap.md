@@ -60,6 +60,7 @@ Die Implementierung startet mit einem kleinen, durch Tests abgesicherten vertika
 42. **ES5→ES6-Uplift, sicherer Funktions-Scope-Kern** (`docs/42-es5-to-es6-uplift.md`): ausgewählte initialisierte `var`-Deklarationen in Funktionskörpern optional in `const`/`let` umwandeln.
 43. **JSON-Asset-Manifest** (`docs/43-json-asset-manifest.md`): geordnete CSS-/JavaScript-Einbindungen und Ressourcenpfad mit optionalem öffentlichem Basepath ausgeben.
 44. **Ext-JS-Runtime im Bundle** (`docs/44-extjs-runtime-in-app-js.md`): die aufgelöste Ext-JS-Runtime auf Wunsch vor den Anwendungscode in `app.js` aufnehmen.
+45. **Theme-Package-SCSS für geladene Klassen** (`docs/45-theme-package-scss.md`): Styles aus ausgewählten Theme-Packages anhand geladener Klassen kompilieren, auch wenn das Theme-Package selbst keine gleichnamigen JavaScript-Dateien enthält.
 
 ## Architekturleitplanken
 

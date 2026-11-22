@@ -261,6 +261,33 @@ $fa-brand-icons: ("brand-check": '\f00c');
 	}
 }
 
+func TestCompileThemeBackgroundImageWithVariablePath(t *testing.T) {
+	binary := os.Getenv("SASS")
+	if binary == "" {
+		binary = "sass"
+	}
+	if _, err := exec.LookPath(binary); err != nil {
+		t.Skip("Dart Sass is not installed")
+	}
+	root := t.TempDir()
+	source := filepath.Join(root, "LoadMask.scss")
+	if err := os.WriteFile(source, []byte(`.load-mask { background-image: theme-background-image($loadmask-msg-inner-icon, 'gif'); }`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	css, warnings, err := compileClassSassWithInlineImports(root, []string{source}, false, nil, nil, nil, map[string]string{
+		"loadmask-msg-inner-icon": `"loadmask/loading"`,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(warnings) != 0 {
+		t.Fatalf("theme background image warnings = %#v, want none", warnings)
+	}
+	if !bytes.Contains(css, []byte(`url("../../shared/images/loadmask/loading.gif")`)) {
+		t.Fatalf("compiled theme background image CSS = %s", css)
+	}
+}
+
 func TestCollectFashionJavaScriptFunctionUses(t *testing.T) {
 	root := makeFixture(t, map[string]string{
 		"unused.scss": `$sass-map: map-merge((a: 1), (b: 2));`,
@@ -336,6 +363,58 @@ func TestPackageSassSrcIncludesExplicitEntryFiles(t *testing.T) {
 	}
 	if !bytes.Contains(css, []byte(".package-entry")) || !bytes.Contains(css, []byte("color: #246")) || !bytes.Contains(css, []byte("../../shared/fonts/sample.woff?v1#icon")) {
 		t.Fatalf("compiled package Sass entry = %s", css)
+	}
+}
+
+func TestThemePackageSassSrcIncludesRulesWithoutPairedJavaScript(t *testing.T) {
+	root := makeFixture(t, map[string]string{
+		"theme/sass/src/Component.scss": `.theme-component { color: $theme-color; background-image: url(../images/component.png); }`,
+	})
+	themeRoot := packageSassSourceRoot{
+		SassPath:  filepath.Join(root, "theme", "sass", "src"),
+		ClassPath: filepath.Join(root, "theme", "src"),
+		Package:   "theme-triton",
+		Theme:     true,
+	}
+	sources, watchPaths, warnings, err := resolvePackageClassSassSources(root, []packageSassSourceRoot{themeRoot}, nil, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	wantSource, err := filepath.Abs(filepath.Join(root, "theme", "sass", "src", "Component.scss"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(sources, []string{wantSource}) || !reflect.DeepEqual(watchPaths, []string{wantSource}) || len(warnings) != 0 {
+		t.Fatalf("theme Sass sources = %#v, watch paths = %#v, warnings = %#v; want unpaired theme source %s", sources, watchPaths, warnings, wantSource)
+	}
+}
+
+func TestFilterThemePackageSassSourcesUsesLoadedFrameworkClasses(t *testing.T) {
+	root := makeFixture(t, map[string]string{
+		"theme/sass/src/Component.scss":            `.component { color: red; }`,
+		"theme/sass/src/grid/feature/RowWrap.scss": `.row-wrap { color: blue; }`,
+	})
+	themeRoot := packageSassSourceRoot{
+		SassPath:  filepath.Join(root, "theme", "sass", "src"),
+		ClassPath: filepath.Join(root, "theme", "src"),
+		Package:   "theme-triton",
+		Theme:     true,
+	}
+	sources, _, _, err := resolvePackageClassSassSources(root, []packageSassSourceRoot{themeRoot}, nil, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	loaded := []string{filepath.Join(root, "sdk", "classic", "src", "Component.js")}
+	filtered := filterThemePackageSassSources(sources, []packageSassSourceRoot{themeRoot}, loaded)
+	want := []string{filepath.Join(root, "theme", "sass", "src", "Component.scss")}
+	for i := range want {
+		want[i], err = filepath.Abs(want[i])
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+	if !reflect.DeepEqual(filtered, want) {
+		t.Fatalf("filtered theme Sass sources = %#v, want %#v", filtered, want)
 	}
 }
 

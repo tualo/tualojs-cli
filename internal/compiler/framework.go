@@ -60,6 +60,7 @@ type packageSassSourceRoot struct {
 	ClassPath string
 	Package   string
 	EntryFile bool
+	Theme     bool
 }
 
 type packageSassEtcRoot struct {
