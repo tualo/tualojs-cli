@@ -14,7 +14,8 @@ Theme-Packages enthalten Komponenten-SCSS, deren JavaScript-Klassen im Framework
 
 ## Prüfungen
 
-- Integrationstest mit Dart Sass für Theme-Variablen und Theme-SCSS ohne JavaScript-Datei im Theme-Package.
+- Integrationstest mit Dart Sass für App-Variablen-Overrides, Theme-Mixins und Theme-SCSS ohne JavaScript-Datei im Theme-Package.
+- Integrationstest für `theme-background-image()` mit kopierter Package-Ressource.
 - Test, dass Sass-Regeln ohne geladene Klassen nicht in den Build gelangen.
 - Classic-Realprojekt-Build für `theme-triton` sowie `go test ./...` und `go vet ./...`.
 

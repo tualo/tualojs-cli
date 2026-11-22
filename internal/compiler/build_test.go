@@ -695,19 +695,22 @@ func TestBuildCompilesLoadedThemeSassSourcesWithoutPackageJavaScript(t *testing.
 		t.Skip("Dart Sass is not installed")
 	}
 	root := makeFixture(t, map[string]string{
-		"app.json":                                          `{"name":"Example","namespace":"Example","toolkit":"classic","theme":"theme-custom","classpath":["app"],"js":[{"path":"app.js","bundle":true}]}`,
-		"workspace.json":                                    `{"frameworks":{"ext":{"path":"sdk","version":"8.0.0.43"}}}`,
-		"sdk/package.json":                                  `{"name":"ext","version":"8.0.0.43","compatVersion":"8.0.0"}`,
-		"sdk/packages/core/package.json":                    `{"version":"8.0.0.43","sencha":{"name":"core","classpath":"${package.dir}/src"}}`,
-		"sdk/packages/core/src/Base.js":                     `Ext.define('Ext.Base', {});`,
-		"sdk/classic/classic/package.json":                  `{"version":"8.0.0.43","sencha":{"name":"classic","toolkit":"classic","requires":["core"],"classpath":"${package.dir}/src"}}`,
-		"sdk/classic/classic/src/Component.js":              `Ext.define('Ext.Component', { extend: 'Ext.Base' });`,
-		"sdk/packages/theme-custom/package.json":            `{"version":"1.0.0","sencha":{"name":"theme-custom","type":"theme","toolkit":"classic","classpath":"${package.dir}/src","sass":{"var":"${package.dir}/sass/var","src":"${package.dir}/sass/src"}}}`,
-		"sdk/packages/theme-custom/sass/var/Component.scss": `$theme-component-color: #c30;`,
-		"sdk/packages/theme-custom/sass/var/Mixins.scss":    `@mixin theme-component-color { color: $theme-component-color; }`,
-		"sdk/packages/theme-custom/sass/src/Component.scss": `.x-component { @include theme-component-color; }`,
-		"app.js":      `Ext.application({name: 'Example', extend: 'Example.Main'});`,
-		"app/Main.js": `Ext.define('Example.Main', { extend: 'Ext.Component' });`,
+		"app.json":                               `{"name":"Example","namespace":"Example","toolkit":"classic","theme":"theme-triton","classpath":["app"],"sass":{"var":"sass/var"},"js":[{"path":"app.js","bundle":true}]}`,
+		"workspace.json":                         `{"frameworks":{"ext":{"path":"sdk","version":"8.0.0.43"}}}`,
+		"sdk/package.json":                       `{"name":"ext","version":"8.0.0.43","compatVersion":"8.0.0"}`,
+		"sdk/packages/core/package.json":         `{"version":"8.0.0.43","sencha":{"name":"core","classpath":"${package.dir}/src"}}`,
+		"sdk/packages/core/src/Base.js":          `Ext.define('Ext.Base', {});`,
+		"sdk/classic/classic/package.json":       `{"version":"8.0.0.43","sencha":{"name":"classic","toolkit":"classic","requires":["core"],"classpath":"${package.dir}/src"}}`,
+		"sdk/classic/classic/src/Component.js":   `Ext.define('Ext.Component', { extend: 'Ext.Base' });`,
+		"sdk/packages/theme-triton/package.json": `{"version":"1.0.0","sencha":{"name":"theme-triton","type":"theme","toolkit":"classic","classpath":"${package.dir}/src","resources":[{"path":"${package.dir}/resources","output":"shared"}],"sass":{"var":"${package.dir}/sass/var","src":"${package.dir}/sass/src"}}}`,
+		"sdk/packages/theme-triton/sass/var/Component.scss": `$theme-component-color: #c30;
+$theme-icon: 'loadmask/loading';`,
+		"sdk/packages/theme-triton/sass/var/Mixins.scss":                  `@mixin theme-component-color { color: $theme-component-color; }`,
+		"sdk/packages/theme-triton/sass/src/Component.scss":               `.x-component { @include theme-component-color; background-image: theme-background-image($theme-icon, 'gif'); }`,
+		"sdk/packages/theme-triton/resources/images/loadmask/loading.gif": "theme image",
+		"sass/var/Theme.scss": `$theme-component-color: #0c3;`,
+		"app.js":              `Ext.application({name: 'Example', extend: 'Example.Main'});`,
+		"app/Main.js":         `Ext.define('Example.Main', { extend: 'Ext.Component' });`,
 	})
 
 	result, err := Build(root, "out")
@@ -721,15 +724,23 @@ func TestBuildCompilesLoadedThemeSassSourcesWithoutPackageJavaScript(t *testing.
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(string(data), ".x-component") || !strings.Contains(string(data), "color: #c30") {
+	if !strings.Contains(string(data), ".x-component") || !strings.Contains(string(data), "color: #0c3") {
 		t.Fatalf("compiled theme Sass CSS = %q", data)
 	}
 	combined, err := os.ReadFile(result.CombinedCSSPath)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(string(combined), ".x-component") || !strings.Contains(string(combined), "color: #c30") {
+	if !strings.Contains(string(combined), ".x-component") || !strings.Contains(string(combined), "color: #0c3") {
 		t.Fatalf("combined theme CSS = %q", combined)
+	}
+	if !strings.Contains(string(combined), `url("../../shared/images/loadmask/loading.gif")`) {
+		t.Fatalf("combined theme CSS did not resolve the package image: %q", combined)
+	}
+	resource := filepath.Join(root, "out", "resources", "shared", "images", "loadmask", "loading.gif")
+	resourceData, err := os.ReadFile(resource)
+	if err != nil || string(resourceData) != "theme image" {
+		t.Fatalf("theme image resource = %q, err=%v", resourceData, err)
 	}
 }
 
