@@ -63,6 +63,53 @@ func TestCompileClassSassProvidesCornerRadiusMixins(t *testing.T) {
 	}
 }
 
+func TestCompileClassSassExposesNamespacedColorModuleToSources(t *testing.T) {
+	binary := os.Getenv("SASS")
+	if binary == "" {
+		binary = "sass"
+	}
+	if _, err := exec.LookPath(binary); err != nil {
+		t.Skip("Dart Sass is not installed")
+	}
+	root := t.TempDir()
+	compat := filepath.Join(root, "color-compat.scss")
+	if err := os.WriteFile(compat, []byte(`@function lighten($color, $amount) {
+    @if tualo-math.is-unitless($amount) { $amount: $amount * 1%; }
+    @return tualo-color.adjust($color, $lightness: $amount);
+}
+@function darken($color, $amount) {
+    @if tualo-math.is-unitless($amount) { $amount: $amount * 1%; }
+    @return tualo-color.adjust($color, $lightness: -$amount);
+}
+@function adjust-color($color, $args...) {
+    @return tualo-color.adjust($color, $args...);
+}
+@function mix($color1, $color2, $weight: 50%) {
+    @if tualo-math.is-unitless($weight) { $weight: $weight * 1%; }
+    @return tualo-color.mix($color1, $color2, $weight: $weight);
+}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	source := filepath.Join(root, "Main.scss")
+	if err := os.WriteFile(source, []byte(`.modern-colors {
+    color: lighten(#336699, 10);
+    background-color: adjust-color(#336699, $lightness: 10%);
+    border-color: mix(#000, #fff, 25);
+    outline-color: darken(#336699, 5);
+}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	css, _, err := compileClassSass(root, []string{compat, source}, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{".modern-colors", "color: rgb(25%, 50%, 75%)", "background-color: rgb(25%, 50%, 75%)", "border-color: rgb(75%, 75%, 75%)"} {
+		if !bytes.Contains(css, []byte(want)) {
+			t.Errorf("compiled Sass is missing %q: %s", want, css)
+		}
+	}
+}
+
 func TestCompileClassSassProvidesNullSafeBoxRotations(t *testing.T) {
 	binary := os.Getenv("SASS")
 	if binary == "" {

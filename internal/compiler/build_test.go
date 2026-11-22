@@ -867,6 +867,47 @@ $form-field-height: dynamic(32px);`,
 	}
 }
 
+func TestBuildUsesChildThemeVariableWhenParentVariableSourceIsSkipped(t *testing.T) {
+	sassBinary := os.Getenv("SASS")
+	if sassBinary == "" {
+		sassBinary = "sass"
+	}
+	if _, err := exec.LookPath(sassBinary); err != nil {
+		t.Skip("Dart Sass is not installed")
+	}
+	root := makeFixture(t, map[string]string{
+		"app.json":                                        `{"name":"Example","namespace":"Example","toolkit":"classic","theme":"theme-child","classpath":["app"],"js":[{"path":"app.js","bundle":true}]}`,
+		"workspace.json":                                  `{"frameworks":{"ext":{"path":"sdk","version":"8.0.0.43"}}}`,
+		"sdk/package.json":                                `{"name":"ext","version":"8.0.0.43","compatVersion":"8.0.0"}`,
+		"sdk/packages/core/package.json":                  `{"version":"8.0.0.43","sencha":{"name":"core","classpath":"${package.dir}/src"}}`,
+		"sdk/classic/classic/package.json":                `{"version":"8.0.0.43","sencha":{"name":"classic","toolkit":"classic","requires":["core"],"classpath":"${package.dir}/src"}}`,
+		"sdk/classic/classic/src/Component.js":            `Ext.define('Ext.Component', {});`,
+		"sdk/classic/classic/src/menu/Menu.js":            `Ext.define('Ext.menu.Menu', { extend: 'Ext.Component' });`,
+		"sdk/packages/theme-base/package.json":            `{"version":"8.0.0.43","sencha":{"name":"theme-base","type":"theme","toolkit":"classic","classpath":"${package.dir}/src","sass":{"src":"${package.dir}/sass/src"}}}`,
+		"sdk/packages/theme-base/sass/src/menu/Menu.scss": `.x-menu-item-cmp { @if not is-null($menu-component-margin) and $menu-component-margin != 0 { margin: $menu-component-margin; } }`,
+		"sdk/packages/theme-neutral/package.json":         `{"version":"8.0.0.43","sencha":{"name":"theme-neutral","type":"theme","toolkit":"classic","extend":"theme-base","classpath":"${package.dir}/src","sass":{"var":"${package.dir}/sass/var"}}}`,
+		"sdk/packages/theme-neutral/sass/var/menu/Menu.scss": `$unresolved-neutral-token: dynamic($not-provided-by-this-fixture);
+$menu-component-margin: dynamic(2px);`,
+		"sdk/packages/theme-child/package.json":            `{"version":"1.0.0","sencha":{"name":"theme-child","type":"theme","toolkit":"classic","extend":"theme-neutral","classpath":"${package.dir}/src","sass":{"var":"${package.dir}/sass/var"}}}`,
+		"sdk/packages/theme-child/sass/var/menu/Menu.scss": `$menu-component-margin: dynamic(3px);`,
+		"app.js":      `Ext.application({ name: 'Example', extend: 'Example.Main' });`,
+		"app/Main.js": `Ext.define('Example.Main', { extend: 'Ext.Component', requires: ['Ext.menu.Menu'] });`,
+		"app/Main.scss": `@import "../sdk/packages/theme-base/sass/src/menu/Menu.scss";
+.example-main { color: #246; }`,
+	})
+
+	if _, err := Build(root, "out"); err != nil {
+		t.Fatal(err)
+	}
+	css, err := os.ReadFile(filepath.Join(root, "out", "resources", "classic", "resources", "app-sass.css"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(css), ".x-menu-item-cmp") || !strings.Contains(string(css), "margin: 3px") {
+		t.Fatalf("theme-base menu style did not use child theme's fallback variable: %s", css)
+	}
+}
+
 func TestBuildCompilesSCSSPairedWithClasspathJavaScript(t *testing.T) {
 	root := makeFixture(t, map[string]string{
 		"app.json":                         `{"name":"Example","namespace":"Example","toolkit":"classic","classpath":["app"],"resources":[{"path":"${toolkit.name}/resources"}],"sass":{"etc":"sass/etc/all.scss","var":"sass/var","src":["sass/src","${toolkit.name}/sass/src"]},"css":[{"path":"styles/base.css"}],"js":[{"path":"app.js","bundle":true}]}`,

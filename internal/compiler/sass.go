@@ -2935,6 +2935,7 @@ func compileClassSassWithInlineImportsAndMixinSources(appRoot string, sources []
 		}
 		imported++
 	}
+	entry.WriteString("@use \"sass:color\" as tualo-color;\n@use \"sass:math\" as tualo-math;\n")
 	entry.WriteString("@function dynamic($value, $args...) { @return $value; }\n")
 	entry.WriteString(`$current-resource-root: "resources" !default;
 $relative-image-path-for-uis: "" !default;
