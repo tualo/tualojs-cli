@@ -957,6 +957,156 @@ func resolvePackageSassVariables(appRoot string, roots []string, initialVariable
 	return uniquePaths(sources), uniquePaths(watchPaths), available, warnings, nil
 }
 
+func themePackageSassVariableSources(sources, themeRoots []string) []string {
+	type themeSource struct {
+		path      string
+		rootOrder int
+	}
+	var themeSources []themeSource
+	for _, source := range sources {
+		for rootOrder, root := range themeRoots {
+			if filepath.Clean(source) == filepath.Clean(root) || isPathWithin(source, root) {
+				themeSources = append(themeSources, themeSource{path: source, rootOrder: rootOrder})
+				break
+			}
+		}
+	}
+	sort.SliceStable(themeSources, func(i, j int) bool {
+		return themeSources[i].rootOrder < themeSources[j].rootOrder
+	})
+	ordered := make([]string, 0, len(themeSources))
+	for _, source := range themeSources {
+		ordered = append(ordered, source.path)
+	}
+	return uniquePaths(ordered)
+}
+
+func themeSassVariableOverrides(sources []string) ([]byte, error) {
+	definitions := make(map[string]int)
+	dataByPath := make(map[string][]byte, len(sources))
+	for _, source := range sources {
+		data, err := os.ReadFile(source)
+		if err != nil {
+			return nil, fmt.Errorf("read theme Sass variable source %s: %w", source, err)
+		}
+		dataByPath[source] = data
+		for name := range topLevelSassVariableNames(data) {
+			definitions[name]++
+		}
+	}
+	var duplicated map[string]bool
+	for name, count := range definitions {
+		if count > 1 {
+			if duplicated == nil {
+				duplicated = make(map[string]bool)
+			}
+			duplicated[name] = true
+		}
+	}
+	if len(duplicated) == 0 {
+		return nil, nil
+	}
+	var overrides bytes.Buffer
+	for _, source := range sources {
+		overrides.Write(extractTopLevelSassVariableAssignments(dataByPath[source], duplicated))
+	}
+	return overrides.Bytes(), nil
+}
+
+func extractTopLevelSassVariableAssignments(source []byte, wanted map[string]bool) []byte {
+	var assignments bytes.Buffer
+	lineOffset := 0
+	walkSassLinesWithDepth(source, func(line string, braceDepth, parenDepth int) {
+		startOfLine := lineOffset
+		lineOffset += len(line) + 1
+		if braceDepth != 0 || parenDepth != 0 {
+			return
+		}
+		match := sassVariableDeclaration.FindStringSubmatchIndex(line)
+		if len(match) < 4 || !wanted[line[match[2]:match[3]]] {
+			return
+		}
+		start := startOfLine + match[0]
+		end := sassVariableAssignmentEnd(source, start)
+		if end <= start {
+			return
+		}
+		assignment := source[start:end]
+		assignments.Write(assignment)
+		if trimmed := bytes.TrimSpace(assignment); len(trimmed) > 0 && trimmed[len(trimmed)-1] != ';' {
+			assignments.WriteByte(';')
+		}
+		assignments.WriteByte('\n')
+	})
+	return assignments.Bytes()
+}
+
+func sassVariableAssignmentEnd(source []byte, start int) int {
+	parenDepth, braceDepth, bracketDepth := 0, 0, 0
+	quote := byte(0)
+	escaped := false
+	blockComment := false
+	for index := start; index < len(source); index++ {
+		current := source[index]
+		if blockComment {
+			if current == '*' && index+1 < len(source) && source[index+1] == '/' {
+				blockComment = false
+				index++
+			}
+			continue
+		}
+		if quote != 0 {
+			if escaped {
+				escaped = false
+			} else if current == '\\' {
+				escaped = true
+			} else if current == quote {
+				quote = 0
+			}
+			continue
+		}
+		if current == '\'' || current == '"' {
+			quote = current
+			continue
+		}
+		if current == '/' && index+1 < len(source) {
+			if source[index+1] == '/' {
+				for index < len(source) && source[index] != '\n' {
+					index++
+				}
+				if parenDepth == 0 && braceDepth == 0 && bracketDepth == 0 {
+					return index
+				}
+				continue
+			}
+			if source[index+1] == '*' {
+				blockComment = true
+				index++
+				continue
+			}
+		}
+		switch current {
+		case '(':
+			parenDepth++
+		case ')':
+			parenDepth--
+		case '{':
+			braceDepth++
+		case '}':
+			braceDepth--
+		case '[':
+			bracketDepth++
+		case ']':
+			bracketDepth--
+		case ';':
+			if parenDepth == 0 && braceDepth == 0 && bracketDepth == 0 {
+				return index + 1
+			}
+		}
+	}
+	return len(source)
+}
+
 func sassVariableNullAssignments(source []byte) map[string]bool {
 	assignments := make(map[string]bool)
 	if normalized, _, reason := normalizeFashionDynamic(source); reason == "" {
@@ -1606,6 +1756,42 @@ func sassSourcesWithMixinDefinitions(sources []string) ([]string, error) {
 		}
 	}
 	return uniquePaths(result), nil
+}
+
+func extractSassMixinDefinitions(source []byte) []byte {
+	var definitions bytes.Buffer
+	lineOffset := 0
+	walkSassLinesWithDepth(source, func(line string, braceDepth, _ int) {
+		startOfLine := lineOffset
+		lineOffset += len(line) + 1
+		if braceDepth != 0 {
+			return
+		}
+		lineBytes := []byte(line)
+		mixin := sassMixinDefinition.FindIndex(lineBytes)
+		function := sassFunctionDefinition.FindIndex(lineBytes)
+		match := mixin
+		if function != nil && (match == nil || function[0] < match[0]) {
+			match = function
+		}
+		if match == nil {
+			return
+		}
+		start := startOfLine + match[0]
+		declarationEnd := startOfLine + match[1]
+		openOffset := bytes.IndexByte(source[declarationEnd:], '{')
+		if openOffset < 0 {
+			return
+		}
+		open := declarationEnd + openOffset
+		end := sassBlockEnd(source, open)
+		if end < 0 {
+			return
+		}
+		definitions.Write(source[start : end+1])
+		definitions.WriteByte('\n')
+	})
+	return definitions.Bytes()
 }
 
 func collectSassMixinNames(sources []string) (map[string]bool, error) {
@@ -2328,8 +2514,16 @@ func sassBlockEnd(source []byte, open int) int {
 	depth := 0
 	quote := byte(0)
 	escaped := false
+	blockComment := false
 	for index := open; index < len(source); index++ {
 		current := source[index]
+		if blockComment {
+			if current == '*' && index+1 < len(source) && source[index+1] == '/' {
+				blockComment = false
+				index++
+			}
+			continue
+		}
 		if quote != 0 {
 			if escaped {
 				escaped = false
@@ -2343,6 +2537,19 @@ func sassBlockEnd(source []byte, open int) int {
 		if current == '\'' || current == '"' {
 			quote = current
 			continue
+		}
+		if current == '/' && index+1 < len(source) {
+			if source[index+1] == '/' {
+				for index < len(source) && source[index] != '\n' {
+					index++
+				}
+				continue
+			}
+			if source[index+1] == '*' {
+				blockComment = true
+				index++
+				continue
+			}
 		}
 		switch current {
 		case '{':
@@ -2453,6 +2660,10 @@ func compileClassSass(appRoot string, sources []string, minify bool) ([]byte, []
 }
 
 func compileClassSassWithInlineImports(appRoot string, sources []string, minify bool, inlineImports, skipImports map[string]bool, availableVariables map[string]bool, contextVariables map[string]string) ([]byte, []string, error) {
+	return compileClassSassWithInlineImportsAndMixinSources(appRoot, sources, minify, inlineImports, skipImports, availableVariables, contextVariables, nil, "", nil)
+}
+
+func compileClassSassWithInlineImportsAndMixinSources(appRoot string, sources []string, minify bool, inlineImports, skipImports map[string]bool, availableVariables map[string]bool, contextVariables map[string]string, mixinOnlySources map[string]bool, variableOverridesAfter string, variableOverrides []byte) ([]byte, []string, error) {
 	if len(sources) == 0 {
 		return nil, nil, nil
 	}
@@ -2464,6 +2675,9 @@ func compileClassSassWithInlineImports(appRoot string, sources []string, minify 
 	inlineSources := make(map[string]bool, len(inlineImports)+len(sources))
 	for source, inline := range inlineImports {
 		inlineSources[source] = inline
+	}
+	for source := range mixinOnlySources {
+		inlineSources[source] = true
 	}
 	for _, source := range sources {
 		if inlineSources[source] {
@@ -2496,6 +2710,19 @@ func compileClassSassWithInlineImports(appRoot string, sources []string, minify 
 	var entry strings.Builder
 	var warnings []string
 	imported := 0
+	writeVariableOverrides := func(source string) {
+		if source != variableOverridesAfter || len(variableOverrides) == 0 {
+			return
+		}
+		if entry.Len() > 0 && !strings.HasSuffix(entry.String(), "\n") {
+			entry.WriteByte('\n')
+		}
+		entry.Write(variableOverrides)
+		if variableOverrides[len(variableOverrides)-1] != '\n' {
+			entry.WriteByte('\n')
+		}
+		imported++
+	}
 	entry.WriteString("@function dynamic($value, $args...) { @return $value; }\n")
 	entry.WriteString(`$current-resource-root: "resources" !default;
 $relative-image-path-for-uis: "" !default;
@@ -2673,6 +2900,12 @@ $output-paths: null !default;
 		if err != nil {
 			return nil, warnings, fmt.Errorf("read Sass source %s: %w", source, err)
 		}
+		if mixinOnlySources[source] {
+			data = extractSassMixinDefinitions(data)
+			if len(data) == 0 {
+				continue
+			}
+		}
 		normalizedImages, imageChanged, imageReason := normalizeThemeBackgroundImages(source, data)
 		if imageReason != "" {
 			warnings = append(warnings, fmt.Sprintf("skipped Fashion-dependent Sass source %s: %s", source, imageReason))
@@ -2723,6 +2956,7 @@ $output-paths: null !default;
 			if len(normalized) > 0 && normalized[len(normalized)-1] != '\n' {
 				entry.WriteByte('\n')
 			}
+			writeVariableOverrides(source)
 			imported++
 			continue
 		}
@@ -2733,6 +2967,7 @@ $output-paths: null !default;
 		entry.WriteString("@import ")
 		entry.WriteString(strconv.Quote(filepath.ToSlash(relative)))
 		entry.WriteString(";\n")
+		writeVariableOverrides(source)
 		imported++
 	}
 	if imported == 0 {

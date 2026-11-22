@@ -749,6 +749,66 @@ func TestResolvePackageSassVariablesOrdersForwardReferences(t *testing.T) {
 	}
 }
 
+func TestResolvePackageSassVariablesPreservesThemeCascadeAfterDeferredSources(t *testing.T) {
+	binary := os.Getenv("SASS")
+	if binary == "" {
+		binary = "sass"
+	}
+	if _, err := exec.LookPath(binary); err != nil {
+		t.Skip("Dart Sass is not installed")
+	}
+	root := makeFixture(t, map[string]string{
+		"theme-neutral/sass/var/a-Menu.scss":      `$menu-active-color: dynamic($base-color);`,
+		"theme-neutral/sass/var/z-Component.scss": `$base-color: dynamic(#808080);`,
+		"theme-triton/sass/var/a-Component.scss": `$base-color: dynamic(#5fa2dd);
+$base-highlight-color: dynamic(mix(#fff, $base-color, 20%));`,
+		"theme-triton/sass/var/z-Menu.scss": `$menu-active-color: dynamic($base-highlight-color);`,
+		"app.scss":                          `.menu-item-active { color: $menu-active-color; }`,
+	})
+	sources, _, _, warnings, err := resolvePackageSassVariables(root, []string{
+		filepath.Join(root, "theme-neutral", "sass", "var"),
+		filepath.Join(root, "theme-triton", "sass", "var"),
+	}, nil, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	roots := []string{
+		filepath.Join(root, "theme-neutral", "sass", "var"),
+		filepath.Join(root, "theme-triton", "sass", "var"),
+	}
+	themeSources := themePackageSassVariableSources(sources, roots)
+	wantThemeSources := []string{
+		filepath.Join(root, "theme-neutral", "sass", "var", "z-Component.scss"),
+		filepath.Join(root, "theme-neutral", "sass", "var", "a-Menu.scss"),
+		filepath.Join(root, "theme-triton", "sass", "var", "a-Component.scss"),
+		filepath.Join(root, "theme-triton", "sass", "var", "z-Menu.scss"),
+	}
+	for i := range wantThemeSources {
+		wantThemeSources[i], err = filepath.Abs(wantThemeSources[i])
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+	if !reflect.DeepEqual(themeSources, wantThemeSources) {
+		t.Fatalf("theme Sass variable replay order = %#v, want %#v", themeSources, wantThemeSources)
+	}
+	if len(warnings) != 0 {
+		t.Fatalf("theme Sass variable warnings = %#v", warnings)
+	}
+	overrides, err := themeSassVariableOverrides(themeSources)
+	if err != nil {
+		t.Fatal(err)
+	}
+	compileSources := append(append([]string{}, sources...), filepath.Join(root, "app.scss"))
+	css, _, err := compileClassSassWithInlineImportsAndMixinSources(root, compileSources, false, nil, nil, nil, nil, nil, sources[len(sources)-1], overrides)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Contains(css, []byte("color: rgb(")) || bytes.Contains(css, []byte("color: #5fa2dd")) || bytes.Contains(css, []byte("color: #808080")) {
+		t.Fatalf("child theme did not override its parent's deferred value: %s", css)
+	}
+}
+
 func TestResolvePackageSassVariablesSupportsLocalImports(t *testing.T) {
 	root := makeFixture(t, map[string]string{
 		"theme/sass/var/Breadcrumb.scss": `@import "Toolbar";

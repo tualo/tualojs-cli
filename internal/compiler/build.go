@@ -234,6 +234,12 @@ func BuildWithBundleOptions(appDir, outputDir, selectedToolkit, selectedPlatform
 	if err != nil {
 		return BuildResult{}, err
 	}
+	themeSassVarRoots := uniquePaths(append(append([]string{}, appPackages.themeSassVarRoots...), frameworkPackages.themeSassVarRoots...))
+	themeSassVarSources := themePackageSassVariableSources(packageSassVarSources, themeSassVarRoots)
+	themeSassVarOverrides, err := themeSassVariableOverrides(themeSassVarSources)
+	if err != nil {
+		return BuildResult{}, err
+	}
 	appVarVariables, err := collectSassVariableNames(appSassVar)
 	if err != nil {
 		return BuildResult{}, err
@@ -250,7 +256,19 @@ func BuildWithBundleOptions(appDir, outputDir, selectedToolkit, selectedPlatform
 	if err != nil {
 		return BuildResult{}, err
 	}
-	packageSassVarAndMixins := append(append([]string{}, packageSassVarSources...), packageSassMixinSources...)
+	packageSassVarSet := make(map[string]bool, len(packageSassVarSources))
+	for _, source := range packageSassVarSources {
+		packageSassVarSet[source] = true
+	}
+	var packageSassMixinOnlySources []string
+	packageSassMixinOnlySet := make(map[string]bool)
+	for _, source := range packageSassMixinSources {
+		if !packageSassVarSet[source] {
+			packageSassMixinOnlySources = append(packageSassMixinOnlySources, source)
+			packageSassMixinOnlySet[source] = true
+		}
+	}
+	packageSassVarAndMixins := append(append([]string{}, packageSassVarSources...), packageSassMixinOnlySources...)
 	sassSources := uniquePaths(append(append(append(append(append(append(append(append(appSassEtc, themeSassHelperSources...), packageSassEtcSources...), packageSassVarAndMixins...), packageThemeSassEtcSources...), appSassVar...), packageSassSources...), appSassSrc...), classSassSources...))
 	if len(sassSources) > 0 && toolkit == "" {
 		return BuildResult{}, fmt.Errorf("sass compilation requires a selected toolkit; pass -toolkit classic or -toolkit modern")
@@ -461,6 +479,16 @@ func BuildWithBundleOptions(appDir, outputDir, selectedToolkit, selectedPlatform
 		}
 	}
 	sassSources = filterThemePackageSassSources(sassSources, packageSassRoots, loadedSassClassPaths)
+	packageVariableSourceSet := make(map[string]bool, len(packageSassVarAndMixins))
+	for _, source := range packageSassVarAndMixins {
+		packageVariableSourceSet[source] = true
+	}
+	variableOverridesAfter := ""
+	for _, source := range sassSources {
+		if packageVariableSourceSet[source] {
+			variableOverridesAfter = source
+		}
+	}
 	sourceFiles := make(map[string]string, len(ordered))
 	for _, source := range ordered {
 		sourceFiles[source.name] = source.path
@@ -493,7 +521,7 @@ func BuildWithBundleOptions(appDir, outputDir, selectedToolkit, selectedPlatform
 		inlineSassImports[source] = true
 		skipThemeImports[source] = true
 	}
-	classSassCSS, classSassWarnings, err := compileClassSassWithInlineImports(root, sassSources, minify, inlineSassImports, skipThemeImports, packageSassVariables, sassIncludeDefaults)
+	classSassCSS, classSassWarnings, err := compileClassSassWithInlineImportsAndMixinSources(root, sassSources, minify, inlineSassImports, skipThemeImports, packageSassVariables, sassIncludeDefaults, packageSassMixinOnlySet, variableOverridesAfter, themeSassVarOverrides)
 	if err != nil {
 		return BuildResult{}, err
 	}

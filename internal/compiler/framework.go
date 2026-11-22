@@ -20,17 +20,18 @@ type classSourcePath struct {
 }
 
 type packageResolution struct {
-	classpaths   []classSourcePath
-	overrides    []classSourcePath
-	sassEtcRoots []packageSassEtcRoot
-	sassRoots    []packageSassSourceRoot
-	sassVarRoots []string
-	sassWarnings []string
-	resources    []resolvedResource
-	version      string
-	sdkRoot      string
-	packages     []string
-	watchPaths   []string
+	classpaths        []classSourcePath
+	overrides         []classSourcePath
+	sassEtcRoots      []packageSassEtcRoot
+	sassRoots         []packageSassSourceRoot
+	sassVarRoots      []string
+	themeSassVarRoots []string
+	sassWarnings      []string
+	resources         []resolvedResource
+	version           string
+	sdkRoot           string
+	packages          []string
+	watchPaths        []string
 }
 
 type workspaceConfig struct {
@@ -283,6 +284,9 @@ func resolveAppPackagesWithOptional(appRoot string, required, optional []string,
 				return packageResolution{}, fmt.Errorf("package %q Sass var path escapes package directory", pkg.manifest.Sencha.Name)
 			}
 			resolution.sassVarRoots = append(resolution.sassVarRoots, sassVarRoot.path)
+			if pkg.manifest.Sencha.Type == "theme" {
+				resolution.themeSassVarRoots = append(resolution.themeSassVarRoots, sassVarRoot.path)
+			}
 		}
 		resourceEntries := append(resourceList{}, pkg.manifest.Sencha.Resources...)
 		for _, path := range pkg.manifest.Sencha.Resource.Paths {
