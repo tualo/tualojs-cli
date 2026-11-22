@@ -456,6 +456,30 @@ func TestFilterThemePackageSassSourcesUsesLoadedFrameworkClasses(t *testing.T) {
 	}
 }
 
+func TestOrderPackageSassSourcesMatchesSenchaThemeCascade(t *testing.T) {
+	root := t.TempDir()
+	frameworkSass := filepath.Join(root, "sdk", "classic", "classic", "sass", "src")
+	coreSass := filepath.Join(root, "sdk", "packages", "core", "sass", "src")
+	themeSass := filepath.Join(root, "sdk", "classic", "theme-triton", "sass", "src")
+	fontAwesomeEntry := filepath.Join(root, "sdk", "packages", "font-awesome", "sass", "src", "all.scss")
+	roots := []packageSassSourceRoot{
+		{SassPath: fontAwesomeEntry, Package: "font-awesome", EntryFile: true},
+		{SassPath: themeSass, Package: "theme-triton", Theme: true},
+		{SassPath: frameworkSass, Package: "classic"},
+		{SassPath: coreSass, Package: "core"},
+	}
+	sources := []string{
+		fontAwesomeEntry,
+		filepath.Join(themeSass, "grid", "column", "Column.scss"),
+		filepath.Join(frameworkSass, "button", "Button.scss"),
+		filepath.Join(coreSass, "Component.scss"),
+	}
+	want := []string{sources[3], sources[2], sources[1], sources[0]}
+	if got := orderPackageSassSources(sources, roots, "classic"); !reflect.DeepEqual(got, want) {
+		t.Fatalf("ordered package Sass sources = %#v, want framework, theme, package cascade %#v", got, want)
+	}
+}
+
 func TestUnsupportedPackageSassSourceAllowsLocalCallableParameters(t *testing.T) {
 	localParameters := []byte(`@function add-if ($value1, $value2) {
     @if $value1 == null or $value2 == null { @return null; }

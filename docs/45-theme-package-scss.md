@@ -8,17 +8,19 @@ Theme-Packages enthalten Komponenten-SCSS, deren JavaScript-Klassen im Framework
 
 - Sass-Quellen aus `sass/src` eines Theme-Packages werden ohne lokale JavaScript-Gegenstelle erfasst.
 - In den Sass-Build gelangen Theme-Regeln nur, wenn die zugehörige Klassen-JavaScript-Datei im ausgewählten App-Build geladen ist. So werden nicht benötigte Sass-Dateien mit unaufgelösten Variablen ausgelassen.
-- Nach der Abhängigkeitsauflösung werden Theme-Variablen und davon abgeleitete Werte für Spaltenköpfe, Menüs, Buttons, Panels und Formularfelder in der Vererbungsreihenfolge erneut angewendet. So überschreibt das ausgewählte Kind-Theme die zuvor geladenen Eltern-Theme-Werte.
+- Nach der Abhängigkeitsauflösung werden Theme-Variablen und davon abgeleitete Werte für Spaltenköpfe, Grid-Zeilen, Tabs, Menüs, Buttons, Toolbars, Panels, Fenster und Formularfelder in der Vererbungsreihenfolge erneut angewendet. So überschreibt das ausgewählte Kind-Theme die zuvor geladenen Eltern-Theme-Werte.
 - Mixin-Definitionen aus Package-`sass.var`-Dateien stehen den geladenen Theme-Regeln zur Verfügung, auch wenn eine Datei keine Top-Level-Variablendeklaration enthält.
 - Variable `theme-background-image(...)`-Aufrufe werden durch die Sass-Kompatibilitätsfunktion aufgelöst; statische Aufrufe werden weiterhin direkt auf kopierte Ressourcen abgebildet.
+- Sass-Quellen werden in Cascade-Reihenfolge ausgegeben: Core, Toolkit, Theme und anschließend übrige Packages. Dadurch können Package-Regeln wie Font-Awesome-Icons Theme-Defaults mit gleicher Selektor-Spezifität überschreiben.
 - Theme-Regeln werden zusammen mit den übrigen unterstützten Sass-Quellen in `app-sass.css` ausgegeben und in das kombinierte App-CSS übernommen.
 
 ## Prüfungen
 
 - Integrationstest mit Dart Sass für App-Variablen-Overrides, Theme-Mixins und Theme-SCSS ohne JavaScript-Datei im Theme-Package.
 - Regressionstest für eine verzögerte Eltern-Theme-Variablenquelle, die anschließend vom Kind-Theme überschrieben wird.
-- Classic-Referenzvergleich prüft Triton-Spaltenkopf-Farbe, Schrift, Hintergrund sowie Button-, Panel- und Formularfeld-Styles.
+- Classic-Referenzvergleich prüft Triton-Spaltenkopf-Farbe, Schrift, Hintergrund sowie Grid-, Tab-, Button-, Toolbar-, Panel-, Fenster- und Formularfeld-Styles.
 - Integrationstest für `theme-background-image()` mit kopierter Package-Ressource.
+- Cascade-Regressionstest für Font-Awesome-Icons gegenüber gleich spezifischen Form-Trigger-Theme-Regeln.
 - Test, dass Sass-Regeln ohne geladene Klassen nicht in den Build gelangen.
 - Classic-Realprojekt-Build für `theme-triton` sowie `go test ./...` und `go vet ./...`.
 

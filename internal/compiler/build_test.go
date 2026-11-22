@@ -695,11 +695,13 @@ func TestBuildCompilesLoadedThemeSassSourcesWithoutPackageJavaScript(t *testing.
 		t.Skip("Dart Sass is not installed")
 	}
 	root := makeFixture(t, map[string]string{
-		"app.json":                                        `{"name":"Example","namespace":"Example","toolkit":"classic","theme":"theme-triton","classpath":["app"],"sass":{"var":"sass/var"},"js":[{"path":"app.js","bundle":true}]}`,
+		"app.json":                                        `{"name":"Example","namespace":"Example","toolkit":"classic","theme":"theme-triton","requires":["font-awesome"],"classpath":["app"],"sass":{"var":"sass/var"},"js":[{"path":"app.js","bundle":true}]}`,
 		"workspace.json":                                  `{"frameworks":{"ext":{"path":"sdk","version":"8.0.0.43"}}}`,
 		"sdk/package.json":                                `{"name":"ext","version":"8.0.0.43","compatVersion":"8.0.0"}`,
 		"sdk/packages/core/package.json":                  `{"version":"8.0.0.43","sencha":{"name":"core","classpath":"${package.dir}/src"}}`,
 		"sdk/packages/core/src/Base.js":                   `Ext.define('Ext.Base', {});`,
+		"sdk/packages/font-awesome/package.json":          `{"version":"8.0.0.43","sencha":{"name":"font-awesome","type":"code","toolkit":"classic","classpath":"${package.dir}/src","sass":{"src":"${package.dir}/sass/src/all.scss"}}}`,
+		"sdk/packages/font-awesome/sass/src/all.scss":     `.fa-phone:before { content: "PHONE"; }`,
 		"sdk/classic/classic/package.json":                `{"version":"8.0.0.43","sencha":{"name":"classic","toolkit":"classic","requires":["core"],"classpath":"${package.dir}/src"}}`,
 		"sdk/classic/classic/src/Component.js":            `Ext.define('Ext.Component', { extend: 'Ext.Base' });`,
 		"sdk/packages/theme-neutral/package.json":         `{"version":"1.0.0","sencha":{"name":"theme-neutral","type":"theme","toolkit":"classic","classpath":"${package.dir}/src","sass":{"var":"${package.dir}/sass/var"}}}`,
@@ -720,11 +722,18 @@ $form-field-padding: dynamic(1px 3px 2px);
 $form-field-height: dynamic(24px);
 $form-text-field-padding: dynamic($form-field-padding);
 $form-text-field-height: dynamic($form-field-height);
+$tab-bar-background-color: dynamic(#111);
+$grid-row-cell-color: dynamic(#111);
+$grid-row-cell-background-color: dynamic(#eee);
+$toolbar-background-color: dynamic(#111);
+$window-base-color: dynamic($base-color);
+$window-header-background-color: dynamic($window-base-color);
 $button-default-background-color: dynamic(gray);
 $panel-header-background-color: dynamic(#808080);`,
-		"sdk/packages/theme-neptune/package.json":             `{"version":"1.0.0","sencha":{"name":"theme-neptune","type":"theme","toolkit":"classic","extend":"theme-neutral","classpath":"${package.dir}/src","sass":{"var":"${package.dir}/sass/var"}}}`,
-		"sdk/packages/theme-neptune/sass/var/GridHeader.scss": `$grid-header-background-gradient: dynamic('none');`,
-		"sdk/packages/theme-triton/package.json":              `{"version":"1.0.0","sencha":{"name":"theme-triton","type":"theme","toolkit":"classic","extend":"theme-neptune","classpath":"${package.dir}/src","resources":[{"path":"${package.dir}/resources","output":"shared"}],"sass":{"var":"${package.dir}/sass/var","src":"${package.dir}/sass/src"}}}`,
+		"sdk/packages/theme-neptune/package.json": `{"version":"1.0.0","sencha":{"name":"theme-neptune","type":"theme","toolkit":"classic","extend":"theme-neutral","classpath":"${package.dir}/src","sass":{"var":"${package.dir}/sass/var"}}}`,
+		"sdk/packages/theme-neptune/sass/var/GridHeader.scss": `$grid-header-background-gradient: dynamic('none');
+$toolbar-background-color: dynamic(#fff);`,
+		"sdk/packages/theme-triton/package.json": `{"version":"1.0.0","sencha":{"name":"theme-triton","type":"theme","toolkit":"classic","extend":"theme-neptune","classpath":"${package.dir}/src","resources":[{"path":"${package.dir}/resources","output":"shared"}],"sass":{"var":"${package.dir}/sass/var","src":"${package.dir}/sass/src"}}}`,
 		"sdk/packages/theme-triton/sass/var/Component.scss": `$base-color: dynamic(#5fa2dd);
 $base-highlight-color: dynamic(#7fb5e4);
 $color: dynamic(#404040);
@@ -732,6 +741,10 @@ $font-family: dynamic('Open Sans', 'Helvetica Neue', helvetica, arial, verdana, 
 $grid-column-header-color: dynamic($color);
 $grid-column-header-font-weight: dynamic(400);
 $grid-column-header-line-height: dynamic(19px);
+$tab-bar-background-color: dynamic(#222);
+$grid-row-cell-color: dynamic(#404040);
+$toolbar-background-color: dynamic($base-color);
+$window-header-background-color: dynamic($base-color);
 $button-default-background-color: dynamic($base-color);
 $panel-header-background-color: dynamic($base-color);
 $theme-component-color: #c30;
@@ -746,12 +759,17 @@ $form-field-height: dynamic(32px);`,
 		"sdk/packages/theme-triton/sass/var/Mixins.scss": `@mixin theme-component-color { color: $theme-component-color; }`,
 		"sdk/packages/theme-triton/sass/src/Component.scss": `.x-component { @include theme-component-color; background-image: theme-background-image($theme-icon, 'gif'); }
 .x-menu-item-active { color: $menu-item-active-background-color; }
+.x-form-trigger-default:before { content: "TRIANGLE"; }
 .x-column-header {
   @if not is-null($grid-column-header-color) { color: $grid-column-header-color; }
   font: $grid-column-header-font;
 }
 .x-grid-header-ct { background-color: $grid-header-background-color; border-color: $grid-header-border-color; }
 .x-form-text-default { padding: $form-text-field-padding; min-height: $form-text-field-height; }
+.x-tab-bar-default { background-color: $tab-bar-background-color; }
+.x-grid-item { color: $grid-row-cell-color; background-color: $grid-row-cell-background-color; }
+.x-toolbar-default { background-color: $toolbar-background-color; }
+.x-window-header-default { background-color: $window-header-background-color; }
 .x-btn-default-small { background-color: $button-default-background-color; }
 .x-btn-inner-default-small { font-family: $button-small-font-family; }
 .x-panel-header-default { background-color: $panel-header-background-color; }`,
@@ -792,6 +810,24 @@ $form-field-height: dynamic(32px);`,
 	}
 	if !strings.Contains(string(data), ".x-btn-inner-default-small") || !strings.Contains(string(data), `font-family: "Open Sans", "Helvetica Neue"`) {
 		t.Fatalf("child theme button font fallback was not applied: %q", data)
+	}
+	themeTriggerIndex := strings.Index(string(data), `content: "TRIANGLE"`)
+	fontAwesomeTriggerIndex := strings.Index(string(data), `content: "PHONE"`)
+	if themeTriggerIndex < 0 || fontAwesomeTriggerIndex < 0 || themeTriggerIndex >= fontAwesomeTriggerIndex {
+		t.Fatalf("Font Awesome trigger CSS does not cascade after theme CSS: %q", data)
+	}
+	for _, want := range []string{
+		".x-tab-bar-default",
+		"background-color: #222",
+		".x-grid-item",
+		"color: #404040",
+		".x-toolbar-default",
+		".x-window-header-default",
+		"background-color: #5fa2dd",
+	} {
+		if !strings.Contains(string(data), want) {
+			t.Errorf("theme Sass output is missing %q: %s", want, data)
+		}
 	}
 	if strings.Contains(string(data), "column-header-bg.gif") {
 		t.Fatalf("disabled Triton header gradient unexpectedly emitted sliced-image CSS: %q", data)

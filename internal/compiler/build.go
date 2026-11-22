@@ -252,6 +252,7 @@ func BuildWithBundleOptions(appDir, outputDir, selectedToolkit, selectedPlatform
 	if err != nil {
 		return BuildResult{}, err
 	}
+	packageSassSources = orderPackageSassSources(packageSassSources, packageSassRoots, toolkit)
 	packageSassMixinSources, err := sassSourcesWithMixinDefinitions(packageSassVarWatchPaths)
 	if err != nil {
 		return BuildResult{}, err

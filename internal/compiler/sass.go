@@ -243,6 +243,46 @@ func filterThemePackageSassSources(sources []string, roots []packageSassSourceRo
 	return filtered
 }
 
+func orderPackageSassSources(sources []string, roots []packageSassSourceRoot, toolkit string) []string {
+	type orderedSource struct {
+		path     string
+		priority int
+	}
+	ordered := make([]orderedSource, 0, len(sources))
+	for _, source := range sources {
+		priority := 4
+		for _, root := range roots {
+			matchesRoot := root.EntryFile && filepath.Clean(source) == filepath.Clean(root.SassPath)
+			if !root.EntryFile {
+				matchesRoot = isPathWithin(source, root.SassPath)
+			}
+			if !matchesRoot {
+				continue
+			}
+			rootPriority := 3
+			if root.Theme {
+				rootPriority = 2
+			} else if root.Package == "core" {
+				rootPriority = 0
+			} else if root.Package == toolkit {
+				rootPriority = 1
+			}
+			if rootPriority < priority {
+				priority = rootPriority
+			}
+		}
+		ordered = append(ordered, orderedSource{path: source, priority: priority})
+	}
+	sort.SliceStable(ordered, func(i, j int) bool {
+		return ordered[i].priority < ordered[j].priority
+	})
+	result := make([]string, 0, len(ordered))
+	for _, source := range ordered {
+		result = append(result, source.path)
+	}
+	return result
+}
+
 func resolvePackageSassEtcSources(appRoot string, roots []packageSassEtcRoot, ignore []*regexp.Regexp) ([]string, []string, []string, []string, error) {
 	var sources []string
 	var themeSources []string
@@ -1102,7 +1142,7 @@ func themeSassVariableOverrides(sources []string) ([]byte, error) {
 }
 
 func isThemeVariableForCascadeReplay(name string) bool {
-	for _, prefix := range []string{"grid-column-header-", "menu-item-active-", "button-default-", "button-small-font-family", "button-medium-font-family", "button-large-font-family", "panel-header-", "form-field-", "form-text-field-"} {
+	for _, prefix := range []string{"grid-column-header-", "grid-row-", "grid-cell-", "grid-body-", "menu-item-active-", "button-default-", "button-small-font-family", "button-medium-font-family", "button-large-font-family", "panel-header-", "form-field-", "form-text-field-", "tab-", "toolbar-", "window-"} {
 		if strings.HasPrefix(name, prefix) {
 			return true
 		}
