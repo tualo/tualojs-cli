@@ -288,6 +288,38 @@ func TestCompileThemeBackgroundImageWithVariablePath(t *testing.T) {
 	}
 }
 
+func TestCompileFashionMaxNormalizesNoneValues(t *testing.T) {
+	binary := os.Getenv("SASS")
+	if binary == "" {
+		binary = "sass"
+	}
+	if _, err := exec.LookPath(binary); err != nil {
+		t.Skip("Dart Sass is not installed")
+	}
+	root := t.TempDir()
+	source := filepath.Join(root, "Component.scss")
+	data := `@function fashion-max($values) {
+  $maximum: nth($values, 1);
+  @if is-null($maximum) { $maximum: 0; }
+  @each $value in $values {
+    @if is-null($value) { $value: 0; }
+    @if $value > $maximum { $maximum: $value; }
+  }
+  @return $maximum;
+}
+.component { z-index: fashion-max(none none); }`
+	if err := os.WriteFile(source, []byte(data), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	css, _, err := compileClassSass(root, []string{source}, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Contains(css, []byte("z-index: 0")) {
+		t.Fatalf("compiled Fashion max CSS = %s", css)
+	}
+}
+
 func TestCollectFashionJavaScriptFunctionUses(t *testing.T) {
 	root := makeFixture(t, map[string]string{
 		"unused.scss": `$sass-map: map-merge((a: 1), (b: 2));`,
@@ -758,12 +790,12 @@ func TestResolvePackageSassVariablesPreservesThemeCascadeAfterDeferredSources(t 
 		t.Skip("Dart Sass is not installed")
 	}
 	root := makeFixture(t, map[string]string{
-		"theme-neutral/sass/var/a-Menu.scss":      `$menu-active-color: dynamic($base-color);`,
+		"theme-neutral/sass/var/a-Menu.scss":      `$menu-item-active-background-color: dynamic($base-color);`,
 		"theme-neutral/sass/var/z-Component.scss": `$base-color: dynamic(#808080);`,
 		"theme-triton/sass/var/a-Component.scss": `$base-color: dynamic(#5fa2dd);
 $base-highlight-color: dynamic(mix(#fff, $base-color, 20%));`,
-		"theme-triton/sass/var/z-Menu.scss": `$menu-active-color: dynamic($base-highlight-color);`,
-		"app.scss":                          `.menu-item-active { color: $menu-active-color; }`,
+		"theme-triton/sass/var/z-Menu.scss": `$menu-item-active-background-color: dynamic($base-highlight-color);`,
+		"app.scss":                          `.menu-item-active { color: $menu-item-active-background-color; }`,
 	})
 	sources, _, _, warnings, err := resolvePackageSassVariables(root, []string{
 		filepath.Join(root, "theme-neutral", "sass", "var"),

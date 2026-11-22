@@ -695,25 +695,51 @@ func TestBuildCompilesLoadedThemeSassSourcesWithoutPackageJavaScript(t *testing.
 		t.Skip("Dart Sass is not installed")
 	}
 	root := makeFixture(t, map[string]string{
-		"app.json":                                             `{"name":"Example","namespace":"Example","toolkit":"classic","theme":"theme-triton","classpath":["app"],"sass":{"var":"sass/var"},"js":[{"path":"app.js","bundle":true}]}`,
-		"workspace.json":                                       `{"frameworks":{"ext":{"path":"sdk","version":"8.0.0.43"}}}`,
-		"sdk/package.json":                                     `{"name":"ext","version":"8.0.0.43","compatVersion":"8.0.0"}`,
-		"sdk/packages/core/package.json":                       `{"version":"8.0.0.43","sencha":{"name":"core","classpath":"${package.dir}/src"}}`,
-		"sdk/packages/core/src/Base.js":                        `Ext.define('Ext.Base', {});`,
-		"sdk/classic/classic/package.json":                     `{"version":"8.0.0.43","sencha":{"name":"classic","toolkit":"classic","requires":["core"],"classpath":"${package.dir}/src"}}`,
-		"sdk/classic/classic/src/Component.js":                 `Ext.define('Ext.Component', { extend: 'Ext.Base' });`,
-		"sdk/packages/theme-neutral/package.json":              `{"version":"1.0.0","sencha":{"name":"theme-neutral","type":"theme","toolkit":"classic","classpath":"${package.dir}/src","sass":{"var":"${package.dir}/sass/var"}}}`,
-		"sdk/packages/theme-neutral/sass/var/a-Menu.scss":      `$menu-active-color: dynamic($base-color);`,
-		"sdk/packages/theme-neutral/sass/var/z-Component.scss": `$base-color: dynamic(#808080);`,
-		"sdk/packages/theme-triton/package.json":               `{"version":"1.0.0","sencha":{"name":"theme-triton","type":"theme","toolkit":"classic","extend":"theme-neutral","classpath":"${package.dir}/src","resources":[{"path":"${package.dir}/resources","output":"shared"}],"sass":{"var":"${package.dir}/sass/var","src":"${package.dir}/sass/src"}}}`,
+		"app.json":                                        `{"name":"Example","namespace":"Example","toolkit":"classic","theme":"theme-triton","classpath":["app"],"sass":{"var":"sass/var"},"js":[{"path":"app.js","bundle":true}]}`,
+		"workspace.json":                                  `{"frameworks":{"ext":{"path":"sdk","version":"8.0.0.43"}}}`,
+		"sdk/package.json":                                `{"name":"ext","version":"8.0.0.43","compatVersion":"8.0.0"}`,
+		"sdk/packages/core/package.json":                  `{"version":"8.0.0.43","sencha":{"name":"core","classpath":"${package.dir}/src"}}`,
+		"sdk/packages/core/src/Base.js":                   `Ext.define('Ext.Base', {});`,
+		"sdk/classic/classic/package.json":                `{"version":"8.0.0.43","sencha":{"name":"classic","toolkit":"classic","requires":["core"],"classpath":"${package.dir}/src"}}`,
+		"sdk/classic/classic/src/Component.js":            `Ext.define('Ext.Component', { extend: 'Ext.Base' });`,
+		"sdk/packages/theme-neutral/package.json":         `{"version":"1.0.0","sencha":{"name":"theme-neutral","type":"theme","toolkit":"classic","classpath":"${package.dir}/src","sass":{"var":"${package.dir}/sass/var"}}}`,
+		"sdk/packages/theme-neutral/sass/var/a-Menu.scss": `$menu-item-active-background-color: dynamic($base-color);`,
+		"sdk/packages/theme-neutral/sass/var/z-Component.scss": `$base-color: dynamic(#808080);
+$color: dynamic(#000);
+$grid-header-background-color: dynamic(#ddd);
+$grid-header-background-gradient: dynamic('grid-header');
+$grid-header-border-color: dynamic(#333);
+$grid-column-header-color: dynamic($color);
+$grid-column-header-font-weight: dynamic(300);
+$grid-column-header-font-size: dynamic(13px);
+$grid-column-header-line-height: dynamic(15px);
+$grid-column-header-font-family: dynamic($font-family);
+$grid-column-header-font: dynamic($grid-column-header-font-weight #{$grid-column-header-font-size}/#{$grid-column-header-line-height} $grid-column-header-font-family);`,
+		"sdk/packages/theme-neptune/package.json":             `{"version":"1.0.0","sencha":{"name":"theme-neptune","type":"theme","toolkit":"classic","extend":"theme-neutral","classpath":"${package.dir}/src","sass":{"var":"${package.dir}/sass/var"}}}`,
+		"sdk/packages/theme-neptune/sass/var/GridHeader.scss": `$grid-header-background-gradient: dynamic('none');`,
+		"sdk/packages/theme-triton/package.json":              `{"version":"1.0.0","sencha":{"name":"theme-triton","type":"theme","toolkit":"classic","extend":"theme-neptune","classpath":"${package.dir}/src","resources":[{"path":"${package.dir}/resources","output":"shared"}],"sass":{"var":"${package.dir}/sass/var","src":"${package.dir}/sass/src"}}}`,
 		"sdk/packages/theme-triton/sass/var/Component.scss": `$base-color: dynamic(#5fa2dd);
 $base-highlight-color: dynamic(#7fb5e4);
+$color: dynamic(#404040);
+$font-family: dynamic('Open Sans', 'Helvetica Neue', helvetica, arial, verdana, sans-serif);
+$grid-column-header-color: dynamic($color);
+$grid-column-header-font-weight: dynamic(400);
+$grid-column-header-line-height: dynamic(19px);
 $theme-component-color: #c30;
 $theme-icon: 'loadmask/loading';`,
-		"sdk/packages/theme-triton/sass/var/Menu.scss":   `$menu-active-color: dynamic($base-highlight-color);`,
+		"sdk/packages/theme-triton/sass/var/Column.scss": `$grid-column-header-font-weight: dynamic(400);
+$grid-column-header-line-height: dynamic(19px);
+$grid-header-background-color: dynamic(#fff);
+$grid-header-border-color: dynamic(#d0d0d0);`,
+		"sdk/packages/theme-triton/sass/var/Menu.scss":   `$menu-item-active-background-color: dynamic($base-highlight-color);`,
 		"sdk/packages/theme-triton/sass/var/Mixins.scss": `@mixin theme-component-color { color: $theme-component-color; }`,
 		"sdk/packages/theme-triton/sass/src/Component.scss": `.x-component { @include theme-component-color; background-image: theme-background-image($theme-icon, 'gif'); }
-.x-menu-item-active { color: $menu-active-color; }`,
+.x-menu-item-active { color: $menu-item-active-background-color; }
+.x-column-header {
+  @if not is-null($grid-column-header-color) { color: $grid-column-header-color; }
+  font: $grid-column-header-font;
+}
+.x-grid-header-ct { background-color: $grid-header-background-color; border-color: $grid-header-border-color; }`,
 		"sdk/packages/theme-triton/resources/images/loadmask/loading.gif": "theme image",
 		"sass/var/Theme.scss": `$theme-component-color: #0c3;`,
 		"app.js":              `Ext.application({name: 'Example', extend: 'Example.Main'});`,
@@ -737,6 +763,15 @@ $theme-icon: 'loadmask/loading';`,
 	if !strings.Contains(string(data), ".x-menu-item-active") || !strings.Contains(string(data), "color: #7fb5e4") {
 		t.Fatalf("child theme variables did not override parent defaults: %q", data)
 	}
+	if !strings.Contains(string(data), ".x-column-header") || !strings.Contains(string(data), "color: #404040") || !strings.Contains(string(data), "font: 400 13px/19px") {
+		t.Fatalf("child theme column-header style was not applied: %q", data)
+	}
+	if !strings.Contains(string(data), `"Open Sans", "Helvetica Neue"`) || !strings.Contains(string(data), ".x-grid-header-ct") || !strings.Contains(string(data), "background-color: #fff") || !strings.Contains(string(data), "border-color: #d0d0d0") {
+		t.Fatalf("child theme header font/background was not applied: %q", data)
+	}
+	if strings.Contains(string(data), "column-header-bg.gif") {
+		t.Fatalf("disabled Triton header gradient unexpectedly emitted sliced-image CSS: %q", data)
+	}
 	combined, err := os.ReadFile(result.CombinedCSSPath)
 	if err != nil {
 		t.Fatal(err)
@@ -746,6 +781,15 @@ $theme-icon: 'loadmask/loading';`,
 	}
 	if !strings.Contains(string(combined), ".x-menu-item-active") || !strings.Contains(string(combined), "color: #7fb5e4") {
 		t.Fatalf("combined CSS lost child theme overrides: %q", combined)
+	}
+	if !strings.Contains(string(combined), ".x-column-header") || !strings.Contains(string(combined), "color: #404040") || !strings.Contains(string(combined), "font: 400 13px/19px") {
+		t.Fatalf("combined CSS lost child theme column-header styles: %q", combined)
+	}
+	if !strings.Contains(string(combined), `"Open Sans", "Helvetica Neue"`) || !strings.Contains(string(combined), ".x-grid-header-ct") || !strings.Contains(string(combined), "background-color: #fff") || !strings.Contains(string(combined), "border-color: #d0d0d0") {
+		t.Fatalf("combined CSS lost child theme header font/background: %q", combined)
+	}
+	if strings.Contains(string(combined), "column-header-bg.gif") {
+		t.Fatalf("combined CSS retained a slicer image for the disabled header gradient: %q", combined)
 	}
 	if !strings.Contains(string(combined), `url("../../shared/images/loadmask/loading.gif")`) {
 		t.Fatalf("combined theme CSS did not resolve the package image: %q", combined)

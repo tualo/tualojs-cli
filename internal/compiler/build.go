@@ -287,6 +287,8 @@ func BuildWithBundleOptions(appDir, outputDir, selectedToolkit, selectedPlatform
 	sassMixins["border-top-right-radius"] = true
 	sassMixins["border-bottom-right-radius"] = true
 	sassMixins["border-bottom-left-radius"] = true
+	sassMixins["border-top-radius"] = true
+	sassMixins["border-bottom-radius"] = true
 	sassMixins["opacity"] = true
 	sassMixins["user-select"] = true
 	sassMixins["box-shadow"] = true

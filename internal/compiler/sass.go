@@ -22,6 +22,7 @@ var sassMixinInclude = regexp.MustCompile(`@include[\t ]+([a-zA-Z_-][a-zA-Z0-9_-
 var sassIncludeVariableReference = regexp.MustCompile(`\$(include-[a-zA-Z0-9_-]+)`)
 var sassFunctionDefinition = regexp.MustCompile(`(?m)^[\t ]*@function[\t ]+([a-zA-Z_-][a-zA-Z0-9_-]*)`)
 var sassScopedCallableDefinition = regexp.MustCompile(`(?m)^[\t ]*@(function|mixin)[\t ]+[a-zA-Z_-][a-zA-Z0-9_-]*[\t ]*\(`)
+var fashionMinMaxFunctionDefinition = regexp.MustCompile(`(?m)^[\t ]*@function[\t ]+(min|max)[\t ]*\(`)
 var fontAwesomeEscapedIconInterpolation = regexp.MustCompile(`\\#\{\s*\$icon\s*\}`)
 var sassParameterName = regexp.MustCompile(`^[\t ]*\$([a-zA-Z_][a-zA-Z0-9_-]*)`)
 var fashionJavaScriptFunctionCall = regexp.MustCompile(`(?i)\b(map_merge|intersect[-_]arguments)[\t\r\n ]*\(`)
@@ -982,39 +983,141 @@ func themePackageSassVariableSources(sources, themeRoots []string) []string {
 }
 
 func themeSassVariableOverrides(sources []string) ([]byte, error) {
-	definitions := make(map[string]int)
-	dataByPath := make(map[string][]byte, len(sources))
+	type assignment struct {
+		name       string
+		data       []byte
+		references []string
+		order      int
+	}
+	var assignments []assignment
+	finalAssignments := make(map[string]int)
 	for _, source := range sources {
 		data, err := os.ReadFile(source)
 		if err != nil {
 			return nil, fmt.Errorf("read theme Sass variable source %s: %w", source, err)
 		}
-		dataByPath[source] = data
-		for name := range topLevelSassVariableNames(data) {
-			definitions[name]++
-		}
-	}
-	var duplicated map[string]bool
-	for name, count := range definitions {
-		if count > 1 {
-			if duplicated == nil {
-				duplicated = make(map[string]bool)
+		for _, declaration := range extractTopLevelSassVariableAssignments(data) {
+			assignment := assignment{
+				name:       declaration.name,
+				data:       declaration.data,
+				references: declaration.references,
+				order:      len(assignments),
 			}
-			duplicated[name] = true
+			assignments = append(assignments, assignment)
+			finalAssignments[assignment.name] = assignment.order
 		}
 	}
-	if len(duplicated) == 0 {
+	if len(assignments) == 0 {
 		return nil, nil
 	}
+	recomputed := make(map[string]bool)
+	for name := range finalAssignments {
+		if isThemeVariableForCascadeReplay(name) {
+			recomputed[name] = true
+		}
+	}
+	if len(recomputed) == 0 {
+		return nil, nil
+	}
+	for changed := true; changed; {
+		changed = false
+		for name := range recomputed {
+			index := finalAssignments[name]
+			for _, dependency := range assignments[index].references {
+				if !recomputed[dependency] {
+					if _, exists := finalAssignments[dependency]; exists {
+						recomputed[dependency] = true
+						changed = true
+					}
+				}
+			}
+		}
+	}
+	selected := make(map[string]int, len(recomputed))
+	for name := range recomputed {
+		selected[name] = finalAssignments[name]
+	}
+	outgoing := make(map[string]map[string]bool, len(selected))
+	indegree := make(map[string]int, len(selected))
+	for name, index := range selected {
+		for _, dependency := range assignments[index].references {
+			if dependency == name || !recomputed[dependency] {
+				continue
+			}
+			if outgoing[dependency] == nil {
+				outgoing[dependency] = make(map[string]bool)
+			}
+			if !outgoing[dependency][name] {
+				outgoing[dependency][name] = true
+				indegree[name]++
+			}
+		}
+	}
+	less := func(left, right string) bool {
+		return selected[left] < selected[right]
+	}
+	var ready []string
+	for name := range selected {
+		if indegree[name] == 0 {
+			ready = append(ready, name)
+		}
+	}
+	var ordered []string
+	for len(ready) > 0 {
+		sort.Slice(ready, func(i, j int) bool { return less(ready[i], ready[j]) })
+		name := ready[0]
+		ready = ready[1:]
+		ordered = append(ordered, name)
+		for dependent := range outgoing[name] {
+			indegree[dependent]--
+			if indegree[dependent] == 0 {
+				ready = append(ready, dependent)
+			}
+		}
+	}
+	if len(ordered) < len(selected) {
+		included := make(map[string]bool, len(ordered))
+		for _, name := range ordered {
+			included[name] = true
+		}
+		var unresolved []string
+		for name := range selected {
+			if !included[name] {
+				unresolved = append(unresolved, name)
+			}
+		}
+		sort.Slice(unresolved, func(i, j int) bool { return less(unresolved[i], unresolved[j]) })
+		ordered = append(ordered, unresolved...)
+	}
 	var overrides bytes.Buffer
-	for _, source := range sources {
-		overrides.Write(extractTopLevelSassVariableAssignments(dataByPath[source], duplicated))
+	for _, name := range ordered {
+		declaration := assignments[selected[name]].data
+		if normalized, changed, reason := normalizeFashionDynamic(declaration); reason == "" && changed {
+			declaration = normalized
+		}
+		overrides.Write(removeSassDefaultFlag(declaration))
+		overrides.WriteByte('\n')
 	}
 	return overrides.Bytes(), nil
 }
 
-func extractTopLevelSassVariableAssignments(source []byte, wanted map[string]bool) []byte {
-	var assignments bytes.Buffer
+func isThemeVariableForCascadeReplay(name string) bool {
+	switch name {
+	case "grid-column-header-color", "grid-column-header-font", "grid-column-header-font-family", "grid-column-header-font-size", "grid-column-header-font-weight", "grid-column-header-line-height", "grid-header-background-color", "grid-header-background-gradient", "grid-header-border-color":
+		return true
+	default:
+		return strings.HasPrefix(name, "menu-item-active-")
+	}
+}
+
+type sassVariableAssignment struct {
+	name       string
+	data       []byte
+	references []string
+}
+
+func extractTopLevelSassVariableAssignments(source []byte) []sassVariableAssignment {
+	var assignments []sassVariableAssignment
 	lineOffset := 0
 	walkSassLinesWithDepth(source, func(line string, braceDepth, parenDepth int) {
 		startOfLine := lineOffset
@@ -1023,7 +1126,7 @@ func extractTopLevelSassVariableAssignments(source []byte, wanted map[string]boo
 			return
 		}
 		match := sassVariableDeclaration.FindStringSubmatchIndex(line)
-		if len(match) < 4 || !wanted[line[match[2]:match[3]]] {
+		if len(match) < 4 {
 			return
 		}
 		start := startOfLine + match[0]
@@ -1031,14 +1134,38 @@ func extractTopLevelSassVariableAssignments(source []byte, wanted map[string]boo
 		if end <= start {
 			return
 		}
-		assignment := source[start:end]
-		assignments.Write(assignment)
-		if trimmed := bytes.TrimSpace(assignment); len(trimmed) > 0 && trimmed[len(trimmed)-1] != ';' {
-			assignments.WriteByte(';')
+		assignmentData := append([]byte(nil), source[start:end]...)
+		if trimmed := bytes.TrimSpace(assignmentData); len(trimmed) > 0 && trimmed[len(trimmed)-1] != ';' {
+			assignmentData = append(assignmentData, ';')
 		}
-		assignments.WriteByte('\n')
+		colon := bytes.IndexByte(assignmentData, ':')
+		if colon < 0 {
+			return
+		}
+		name := line[match[2]:match[3]]
+		references := sassVariableReferencesInExpression(string(assignmentData[colon+1:]), 0)
+		assignments = append(assignments, sassVariableAssignment{name: name, data: assignmentData, references: uniqueStrings(references)})
 	})
-	return assignments.Bytes()
+	return assignments
+}
+
+func removeSassDefaultFlag(assignment []byte) []byte {
+	semicolon := bytes.LastIndexByte(assignment, ';')
+	if semicolon < 0 {
+		return assignment
+	}
+	valueEnd := len(bytes.TrimRight(assignment[:semicolon], " \t\r\n"))
+	trimmed := bytes.TrimRight(assignment[:valueEnd], " \t\r\n")
+	if !bytes.HasSuffix(trimmed, []byte("!default")) {
+		return assignment
+	}
+	valueEnd = len(trimmed) - len("!default")
+	for valueEnd > 0 && (assignment[valueEnd-1] == ' ' || assignment[valueEnd-1] == '\t') {
+		valueEnd--
+	}
+	result := append([]byte(nil), assignment[:valueEnd]...)
+	result = append(result, ';')
+	return result
 }
 
 func sassVariableAssignmentEnd(source []byte, start int) int {
@@ -1289,6 +1416,50 @@ func normalizeFashionNullDarkenAssignments(source []byte, nullVariables map[stri
 		return source, false
 	}
 	return []byte(strings.Join(lines, "")), true
+}
+
+func normalizeFashionMinMaxNone(source []byte) []byte {
+	matches := fashionMinMaxFunctionDefinition.FindAllSubmatchIndex(source, -1)
+	if len(matches) == 0 {
+		return source
+	}
+	var output strings.Builder
+	previous := 0
+	for _, match := range matches {
+		if len(match) < 6 {
+			continue
+		}
+		openOffset := bytes.IndexByte(source[match[1]:], '{')
+		if openOffset < 0 {
+			continue
+		}
+		open := match[1] + openOffset
+		end := sassBlockEnd(source, open)
+		if end < 0 {
+			continue
+		}
+		output.Write(source[previous:match[0]])
+		function := string(source[match[2]:match[3]])
+		block := append([]byte(nil), source[match[0]:end+1]...)
+		if function == "min" {
+			block = bytes.ReplaceAll(block, []byte("@if is-null($min) {"), []byte("@if is-null($min) or $min == none {"))
+			block = bytes.ReplaceAll(block, []byte("@if is-null($item) {"), []byte("@if is-null($item) or $item == none {"))
+			block = bytes.ReplaceAll(block, []byte("@if is-null($value1) {"), []byte("@if is-null($value1) or $value1 == none {"))
+			block = bytes.ReplaceAll(block, []byte("@if is-null($value2) {"), []byte("@if is-null($value2) or $value2 == none {"))
+		} else {
+			block = bytes.ReplaceAll(block, []byte("@if is-null($max) {"), []byte("@if is-null($max) or $max == none {"))
+			block = bytes.ReplaceAll(block, []byte("@if is-null($item) {"), []byte("@if is-null($item) or $item == none {"))
+			block = bytes.ReplaceAll(block, []byte("@if is-null($value1) {"), []byte("@if is-null($value1) or $value1 == none {"))
+			block = bytes.ReplaceAll(block, []byte("@if is-null($value2) {"), []byte("@if is-null($value2) or $value2 == none {"))
+		}
+		output.Write(block)
+		previous = end + 1
+	}
+	if previous == 0 {
+		return source
+	}
+	output.Write(source[previous:])
+	return []byte(output.String())
 }
 
 func sassExpressionHasDirectOrOperand(expression, variable string) bool {
@@ -2065,6 +2236,7 @@ func inlineSassImports(appRoot, importer string, source []byte, availableVariabl
 	active := make(map[string]bool)
 	var expand func(string, []byte) ([]byte, error)
 	expand = func(current string, data []byte) ([]byte, error) {
+		data = normalizeFashionMinMaxNone(data)
 		data = normalizeFontAwesomeIconInterpolations(data)
 		data = stripFashionThemeBackgroundImageFunction(data)
 		data, _ = normalizeFashionNullDarkenAssignments(data, nullVariables)
@@ -2730,6 +2902,12 @@ $theme-resource-path: "" !default;
 $image-search-path: "" !default;
 $image-extension: "png" !default;
 $slicer-image-extension: "png" !default;
+$experimental-support-for-svg: false !default;
+$support-for-original-webkit-gradients: false !default;
+$experimental-support-for-webkit: false !default;
+$experimental-support-for-mozilla: false !default;
+$experimental-support-for-opera: false !default;
+$experimental-support-for-pie: false !default;
 $include-missing-images: false !default;
 $enable-missing-image-warnings: false !default;
 $output-paths: null !default;
@@ -2747,6 +2925,7 @@ $output-paths: null !default;
     @if type-of($map) != "map" { $map: (); }
     @return map-merge($map, ($key: $value));
 }
+@function is-null($value) { @return $value == null or $value == none; }
 @function file_join($first, $parts...) {
     $result: if($first == null, "", $first);
     @each $part in $parts {
@@ -2827,6 +3006,18 @@ $output-paths: null !default;
     -webkit-border-bottom-left-radius: $radius;
     border-bottom-left-radius: $radius;
 }
+@mixin border-top-radius($radius) {
+    -webkit-border-top-left-radius: $radius;
+    -webkit-border-top-right-radius: $radius;
+    border-top-left-radius: $radius;
+    border-top-right-radius: $radius;
+}
+@mixin border-bottom-radius($radius) {
+    -webkit-border-bottom-left-radius: $radius;
+    -webkit-border-bottom-right-radius: $radius;
+    border-bottom-left-radius: $radius;
+    border-bottom-right-radius: $radius;
+}
 @mixin opacity($opacity) { opacity: $opacity; }
 @mixin user-select($value) {
     -webkit-user-select: $value;
@@ -2906,6 +3097,7 @@ $output-paths: null !default;
 				continue
 			}
 		}
+		data = normalizeFashionMinMaxNone(data)
 		normalizedImages, imageChanged, imageReason := normalizeThemeBackgroundImages(source, data)
 		if imageReason != "" {
 			warnings = append(warnings, fmt.Sprintf("skipped Fashion-dependent Sass source %s: %s", source, imageReason))
