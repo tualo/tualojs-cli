@@ -376,10 +376,16 @@ func indexSDKPackages(sdkRoot, toolkit string) (map[string]*sdkPackage, error) {
 			return nil, fmt.Errorf("list SDK packages in %s: %w", parent, err)
 		}
 		for _, entry := range entries {
-			if !entry.IsDir() {
-				continue
-			}
 			root := filepath.Join(parent, entry.Name())
+			if !entry.IsDir() {
+				if entry.Type()&os.ModeSymlink == 0 {
+					continue
+				}
+				info, err := os.Stat(root)
+				if err != nil || !info.IsDir() {
+					continue
+				}
+			}
 			manifestData, err := os.ReadFile(filepath.Join(root, "package.json"))
 			if err != nil {
 				if os.IsNotExist(err) {

@@ -25,5 +25,6 @@ Links zu: /Users/thomashoffmann/Documents/Projects/go/extjs-compiler/testdata/sa
 - Das Theme ist als `theme-neumorhphic-2027` angelegt und erweitert `theme-neutral`.
 - Die Palette ist in Sass-Theme-Variablen zentral definiert und als CSS Custom Properties verfügbar.
 - Legacy-Farb-Funktionsnamen aus dem Ext-JS-8-Theme werden über `sass:color`-Funktionen kompatibel gehalten.
-- `$menu-component-margin` ist im Kind-Theme explizit gesetzt, da `theme-base` die Variable in `Menu.scss` direkt benötigt.
+- `$menu-component-margin` und `$tag-field-item-margin` sind im Kind-Theme explizit gesetzt. Damit bleibt die Menu-Regel aus `theme-base` definiert und der Variablenzyklus zwischen den Formularfeld- und CheckboxGroup-Dateien von `theme-neutral` wird aufgelöst.
+- Die konkreten Date-Picker- und Grid-RowWrap-Werte sind im Kind-Theme definiert, damit deren `theme-neutral`-SCSS vollständig aufgelöst wird.
 - Die Sample-App verwendet das neue Theme; ihre lokale SDK-Kopie enthält das Theme-Package.

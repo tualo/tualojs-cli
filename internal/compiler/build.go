@@ -203,6 +203,10 @@ func BuildWithBundleOptions(appDir, outputDir, selectedToolkit, selectedPlatform
 			return BuildResult{}, fmt.Errorf("resolve framework toolkit classes: %w", err)
 		}
 	}
+	themeCSSSource, themeResources, err := resolveSDKThemeCSS(appPackages.sdkRoot, toolkit, theme)
+	if err != nil {
+		return BuildResult{}, err
+	}
 	packageSassEtcRoots := append(append([]packageSassEtcRoot{}, appPackages.sassEtcRoots...), frameworkPackages.sassEtcRoots...)
 	packageSassEtcSources, packageThemeSassEtcSources, packageSassEtcWatchPaths, packageSassEtcWarnings, err := resolvePackageSassEtcSources(root, packageSassEtcRoots, ignorePatterns)
 	if err != nil {
@@ -481,7 +485,9 @@ func BuildWithBundleOptions(appDir, outputDir, selectedToolkit, selectedPlatform
 			loadedSassClassPaths = append(loadedSassClassPaths, frameworkPath)
 		}
 	}
-	sassSources = filterThemePackageSassSources(sassSources, packageSassRoots, loadedSassClassPaths)
+	if themeCSSSource != "" {
+		sassSources = filterThemePackageSassSources(sassSources, packageSassRoots, loadedSassClassPaths)
+	}
 	packageVariableSourceSet := make(map[string]bool, len(packageSassVarAndMixins))
 	for _, source := range packageSassVarAndMixins {
 		packageVariableSourceSet[source] = true
@@ -540,10 +546,6 @@ func BuildWithBundleOptions(appDir, outputDir, selectedToolkit, selectedPlatform
 		if outputPath == source.path {
 			return BuildResult{}, fmt.Errorf("output bundle would overwrite class source %s", source.path)
 		}
-	}
-	themeCSSSource, themeResources, err := resolveSDKThemeCSS(appPackages.sdkRoot, toolkit, theme)
-	if err != nil {
-		return BuildResult{}, err
 	}
 	themeResourcePaths, err := copySDKThemeResources(themeResources, outputRoot, toolkit)
 	if err != nil {

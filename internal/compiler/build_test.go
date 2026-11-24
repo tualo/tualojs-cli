@@ -735,8 +735,15 @@ $panel-header-background-color: dynamic(#808080);`,
 $toolbar-background-color: dynamic(#fff);`,
 		"sdk/packages/theme-triton/package.json": `{"version":"1.0.0","sencha":{"name":"theme-triton","type":"theme","toolkit":"classic","extend":"theme-neptune","classpath":"${package.dir}/src","resources":[{"path":"${package.dir}/resources","output":"shared"}],"sass":{"var":"${package.dir}/sass/var","src":"${package.dir}/sass/src"}}}`,
 		"sdk/packages/theme-triton/sass/var/Component.scss": `$base-color: dynamic(#5fa2dd);
+$form-checkbox-glyph-color: dynamic(#29384a);
 $base-highlight-color: dynamic(#7fb5e4);
 $color: dynamic(#404040);
+$grid-header-over-background-color: dynamic(#d6dfeb);
+$grid-column-header-color: dynamic(#29384a);
+$menu-background-color: dynamic(#e7edf5);
+$menu-border-color: dynamic(#b9c3d1);
+$menu-padding: dynamic(0);
+$menu-item-border-width: dynamic(0);
 $font-family: dynamic('Open Sans', 'Helvetica Neue', helvetica, arial, verdana, sans-serif);
 $grid-column-header-color: dynamic($color);
 $grid-column-header-font-weight: dynamic(400);
@@ -765,6 +772,8 @@ $form-field-height: dynamic(32px);`,
   font: $grid-column-header-font;
 }
 .x-grid-header-ct { background-color: $grid-header-background-color; border-color: $grid-header-border-color; }
+.x-column-header-over-theme-test { background-color: $grid-header-over-background-color; }
+.x-menu-theme-test { background-color: $menu-background-color; border-color: $menu-border-color; padding: $menu-padding; border-width: $menu-item-border-width; }
 .x-form-text-default { padding: $form-text-field-padding; min-height: $form-text-field-height; }
 .x-tab-bar-default { background-color: $tab-bar-background-color; }
 .x-grid-item { color: $grid-row-cell-color; background-color: $grid-row-cell-background-color; }
@@ -773,6 +782,8 @@ $form-field-height: dynamic(32px);`,
 .x-btn-default-small { background-color: $button-default-background-color; }
 .x-btn-inner-default-small { font-family: $button-small-font-family; }
 .x-panel-header-default { background-color: $panel-header-background-color; }`,
+		"sdk/packages/theme-triton/src/grid/column/Check.js":              `Ext.define('Ext.theme.triton.grid.column.Check', { extend: 'Ext.Base' });`,
+		"sdk/packages/theme-triton/sass/src/grid/column/Check.scss":       `.x-grid-checkcolumn-theme-test { color: $form-checkbox-glyph-color; }`,
 		"sdk/packages/theme-triton/resources/images/loadmask/loading.gif": "theme image",
 		"sass/var/Theme.scss": `$theme-component-color: #0c3;`,
 		"app.js":              `Ext.application({name: 'Example', extend: 'Example.Main'});`,
@@ -824,6 +835,14 @@ $form-field-height: dynamic(32px);`,
 		".x-toolbar-default",
 		".x-window-header-default",
 		"background-color: #5fa2dd",
+		".x-grid-checkcolumn-theme-test",
+		"color: #29384a",
+		".x-column-header-over-theme-test",
+		"background-color: #d6dfeb",
+		".x-menu-theme-test",
+		"border-color: #b9c3d1",
+		"padding: 0",
+		"border-width: 0",
 	} {
 		if !strings.Contains(string(data), want) {
 			t.Errorf("theme Sass output is missing %q: %s", want, data)
@@ -876,23 +895,49 @@ func TestBuildUsesChildThemeVariableWhenParentVariableSourceIsSkipped(t *testing
 		t.Skip("Dart Sass is not installed")
 	}
 	root := makeFixture(t, map[string]string{
-		"app.json":                                        `{"name":"Example","namespace":"Example","toolkit":"classic","theme":"theme-child","classpath":["app"],"js":[{"path":"app.js","bundle":true}]}`,
-		"workspace.json":                                  `{"frameworks":{"ext":{"path":"sdk","version":"8.0.0.43"}}}`,
-		"sdk/package.json":                                `{"name":"ext","version":"8.0.0.43","compatVersion":"8.0.0"}`,
-		"sdk/packages/core/package.json":                  `{"version":"8.0.0.43","sencha":{"name":"core","classpath":"${package.dir}/src"}}`,
-		"sdk/classic/classic/package.json":                `{"version":"8.0.0.43","sencha":{"name":"classic","toolkit":"classic","requires":["core"],"classpath":"${package.dir}/src"}}`,
-		"sdk/classic/classic/src/Component.js":            `Ext.define('Ext.Component', {});`,
-		"sdk/classic/classic/src/menu/Menu.js":            `Ext.define('Ext.menu.Menu', { extend: 'Ext.Component' });`,
-		"sdk/packages/theme-base/package.json":            `{"version":"8.0.0.43","sencha":{"name":"theme-base","type":"theme","toolkit":"classic","classpath":"${package.dir}/src","sass":{"src":"${package.dir}/sass/src"}}}`,
-		"sdk/packages/theme-base/sass/src/menu/Menu.scss": `.x-menu-item-cmp { @if not is-null($menu-component-margin) and $menu-component-margin != 0 { margin: $menu-component-margin; } }`,
-		"sdk/packages/theme-neutral/package.json":         `{"version":"8.0.0.43","sencha":{"name":"theme-neutral","type":"theme","toolkit":"classic","extend":"theme-base","classpath":"${package.dir}/src","sass":{"var":"${package.dir}/sass/var"}}}`,
+		"app.json":                                          `{"name":"Example","namespace":"Example","toolkit":"classic","theme":"theme-child","classpath":["app"],"js":[{"path":"app.js","bundle":true}]}`,
+		"workspace.json":                                    `{"frameworks":{"ext":{"path":"sdk","version":"8.0.0.43"}}}`,
+		"sdk/package.json":                                  `{"name":"ext","version":"8.0.0.43","compatVersion":"8.0.0"}`,
+		"sdk/packages/core/package.json":                    `{"version":"8.0.0.43","sencha":{"name":"core","classpath":"${package.dir}/src"}}`,
+		"sdk/classic/classic/package.json":                  `{"version":"8.0.0.43","sencha":{"name":"classic","toolkit":"classic","requires":["core"],"classpath":"${package.dir}/src"}}`,
+		"sdk/classic/classic/src/Component.js":              `Ext.define('Ext.Component', {});`,
+		"sdk/classic/classic/src/menu/Menu.js":              `Ext.define('Ext.menu.Menu', { extend: 'Ext.Component' });`,
+		"sdk/classic/classic/src/form/CheckboxGroup.js":     `Ext.define('Ext.form.CheckboxGroup', { extend: 'Ext.Component' });`,
+		"sdk/packages/theme-base/package.json":              `{"version":"8.0.0.43","sencha":{"name":"theme-base","type":"theme","toolkit":"classic","classpath":"${package.dir}/src","sass":{"var":"${package.dir}/sass/var","src":"${package.dir}/sass/src"}}}`,
+		"sdk/packages/theme-base/sass/src/menu/Menu.scss":   `.x-menu-item-cmp { @if not is-null($menu-component-margin) and $menu-component-margin != 0 { margin: $menu-component-margin; } }`,
+		"sdk/packages/theme-base/sass/var/picker/Date.scss": `$datepicker-border-width: dynamic(1px);`,
+		"sdk/packages/theme-base/sass/src/picker/Date.scss": `$datepicker-width: $datepicker-item-width * 7;
+.x-date-picker-width-theme-test { width: $datepicker-width; }`,
+		"sdk/packages/theme-neutral/package.json": `{"version":"8.0.0.43","sencha":{"name":"theme-neutral","type":"theme","toolkit":"classic","extend":"theme-base","classpath":"${package.dir}/src","sass":{"var":"${package.dir}/sass/var","src":"${package.dir}/sass/src"}}}`,
 		"sdk/packages/theme-neutral/sass/var/menu/Menu.scss": `$unresolved-neutral-token: dynamic($not-provided-by-this-fixture);
 $menu-component-margin: dynamic(2px);`,
-		"sdk/packages/theme-child/package.json":            `{"version":"1.0.0","sencha":{"name":"theme-child","type":"theme","toolkit":"classic","extend":"theme-neutral","classpath":"${package.dir}/src","sass":{"var":"${package.dir}/sass/var"}}}`,
-		"sdk/packages/theme-child/sass/var/menu/Menu.scss": `$menu-component-margin: dynamic(3px);`,
+		"sdk/packages/theme-neutral/sass/var/form/field/Base.scss": `$form-field-invalid-border-color: dynamic(#c30);
+$include-field-default-ui: dynamic(true);
+$form-toolbar-tag-field-item-margin: dynamic($tag-field-item-margin);
+$form-toolbar-tag-field-padding: dynamic($tag-field-padding);`,
+		"sdk/packages/theme-neutral/sass/var/form/CheckboxGroup.scss": `$form-checkboxgroup-body-invalid-border-color: dynamic($form-field-invalid-border-color);
+$include-checkboxgroup-default-ui: dynamic($include-field-default-ui);`,
+		"sdk/packages/theme-neutral/sass/var/picker/Date.scss": `$datepicker-footer-background-color: dynamic($datepicker-column-header-background-color);
+$datepicker-item-width: dynamic(30px);`,
+		"sdk/packages/theme-neutral/sass/src/form/CheckboxGroup.scss":   `@if $include-checkboxgroup-default-ui { .x-checkbox-group-theme-test { border-color: $form-checkboxgroup-body-invalid-border-color; } }`,
+		"sdk/packages/theme-neutral/sass/src/picker/Date.scss":          `.x-date-picker-today-theme-test { border-color: $datepicker-item-today-border-color; }`,
+		"sdk/packages/theme-neutral/sass/src/grid/feature/RowWrap.scss": `.x-grid-row-wrap-theme-test { border-color: $grid-row-wrap-border-color; border-style: $grid-row-wrap-border-style; }`,
+		"sdk/packages/theme-child/package.json":                         `{"version":"1.0.0","sencha":{"name":"theme-child","type":"theme","toolkit":"classic","extend":"theme-neutral","classpath":"${package.dir}/src","sass":{"var":"${package.dir}/sass/var"}}}`,
+		"sdk/packages/theme-child/sass/var/menu/Menu.scss":              `$menu-component-margin: dynamic(3px);`,
+		"sdk/packages/theme-child/sass/var/form/field/Tag.scss": `$tag-field-padding: dynamic(2px 0 0 4px);
+$tag-field-item-margin: dynamic(0 4px 2px 0);`,
+		"sdk/packages/theme-child/sass/var/picker/Date.scss": `$datepicker-column-header-background-color: dynamic(#e7edf5);
+$datepicker-item-today-border-color: dynamic(#627fb5);
+$datepicker-item-width: dynamic(36px);`,
+		"sdk/packages/theme-child/sass/var/grid/feature/RowWrap.scss": `$grid-row-wrap-border-color: dynamic(#b9c3d1);
+$grid-row-wrap-border-style: dynamic(solid);`,
 		"app.js":      `Ext.application({ name: 'Example', extend: 'Example.Main' });`,
-		"app/Main.js": `Ext.define('Example.Main', { extend: 'Ext.Component', requires: ['Ext.menu.Menu'] });`,
+		"app/Main.js": `Ext.define('Example.Main', { extend: 'Ext.Component', requires: ['Ext.menu.Menu', 'Ext.form.CheckboxGroup'] });`,
 		"app/Main.scss": `@import "../sdk/packages/theme-base/sass/src/menu/Menu.scss";
+@import "../sdk/packages/theme-base/sass/src/picker/Date.scss";
+@import "../sdk/packages/theme-neutral/sass/src/form/CheckboxGroup.scss";
+@import "../sdk/packages/theme-neutral/sass/src/picker/Date.scss";
+@import "../sdk/packages/theme-neutral/sass/src/grid/feature/RowWrap.scss";
 .example-main { color: #246; }`,
 	})
 
@@ -903,8 +948,21 @@ $menu-component-margin: dynamic(2px);`,
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(string(css), ".x-menu-item-cmp") || !strings.Contains(string(css), "margin: 3px") {
-		t.Fatalf("theme-base menu style did not use child theme's fallback variable: %s", css)
+	for _, want := range []string{
+		".x-menu-item-cmp",
+		"margin: 3px",
+		".x-checkbox-group-theme-test",
+		"border-color: #c30",
+		".x-date-picker-width-theme-test",
+		"width: 210px",
+		".x-date-picker-today-theme-test",
+		"border-color: #627fb5",
+		".x-grid-row-wrap-theme-test",
+		"border-style: solid",
+	} {
+		if !strings.Contains(string(css), want) {
+			t.Errorf("inherited theme style is missing %q; skipped parent variable dependency was not recovered: %s", want, css)
+		}
 	}
 }
 
@@ -1735,6 +1793,40 @@ func TestBuildResolvesThemePackageDependencies(t *testing.T) {
 		if !found {
 			t.Errorf("theme path %s is missing from watch paths", path)
 		}
+	}
+}
+
+func TestResolveAppPackagesIncludesSymlinkedThemePackages(t *testing.T) {
+	root := makeFixture(t, map[string]string{
+		"workspace.json":                               `{"frameworks":{"ext":{"path":"sdk","version":"8.0.0.43"}}}`,
+		"sdk/package.json":                             `{"name":"ext","version":"8.0.0.43","compatVersion":"8.0.0"}`,
+		"sdk/classic/classic/package.json":             `{"version":"8.0.0.43","sencha":{"name":"classic","toolkit":"classic"}}`,
+		"theme-source/package.json":                    `{"version":"1.0.0","sencha":{"name":"theme-linked","type":"theme","toolkit":"classic","classpath":"${package.dir}/src","sass":{"var":"${package.dir}/sass/var","src":"${package.dir}/sass/src"}}}`,
+		"theme-source/sass/var/Component.scss":         `$base-color: dynamic(#334455);`,
+		"theme-source/sass/src/grid/column/Check.scss": `.x-grid-checkcolumn { color: #334455; }`,
+	})
+	themeLink := filepath.Join(root, "sdk", "classic", "theme-linked")
+	if err := os.Symlink(filepath.Join("..", "..", "theme-source"), themeLink); err != nil {
+		t.Fatal(err)
+	}
+
+	packages, err := resolveAppPackagesWithOptional(root, nil, []string{"theme-linked"}, "classic", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !slices.Contains(packages.packages, "theme-linked") {
+		t.Fatalf("resolved packages = %#v, want symlinked theme-linked package", packages.packages)
+	}
+	if !slices.Contains(packages.themeSassVarRoots, filepath.Join(root, "sdk", "classic", "theme-linked", "sass", "var")) {
+		t.Fatalf("theme Sass variable roots = %#v, want symlinked theme variable root", packages.themeSassVarRoots)
+	}
+	if !slices.Contains(packages.sassRoots, packageSassSourceRoot{
+		SassPath:  filepath.Join(root, "sdk", "classic", "theme-linked", "sass", "src"),
+		ClassPath: filepath.Join(root, "sdk", "classic", "theme-linked", "src"),
+		Package:   "theme-linked",
+		Theme:     true,
+	}) {
+		t.Fatalf("theme Sass roots = %#v, want symlinked theme source root", packages.sassRoots)
 	}
 }
 
