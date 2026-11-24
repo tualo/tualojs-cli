@@ -1142,7 +1142,7 @@ func themeSassVariableOverrides(sources []string) ([]byte, error) {
 }
 
 func isThemeVariableForCascadeReplay(name string) bool {
-	for _, prefix := range []string{"grid-column-header-", "grid-header-", "grid-row-", "grid-cell-", "grid-body-", "grid-checkcolumn-", "checkbox-selection-model-", "menu-", "button-default-", "button-small-font-family", "button-medium-font-family", "button-large-font-family", "panel-header-", "form-field-", "form-text-field-", "form-checkbox-", "tab-", "toolbar-", "window-"} {
+	for _, prefix := range []string{"grid-column-header-", "grid-header-", "grid-row-", "grid-cell-", "grid-body-", "grid-checkcolumn-", "checkbox-selection-model-", "menu-", "button-default-", "button-small-font-family", "button-medium-font-family", "button-large-font-family", "panel-header-", "form-field-", "form-text-field-", "form-checkbox-", "tab-", "tabbar-", "toolbar-", "window-"} {
 		if strings.HasPrefix(name, prefix) {
 			return true
 		}

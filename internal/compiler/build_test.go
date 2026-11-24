@@ -744,6 +744,7 @@ $menu-background-color: dynamic(#e7edf5);
 $menu-border-color: dynamic(#b9c3d1);
 $menu-padding: dynamic(0);
 $menu-item-border-width: dynamic(0);
+$tabbar-padding: dynamic(8px 4px 0 8px);
 $font-family: dynamic('Open Sans', 'Helvetica Neue', helvetica, arial, verdana, sans-serif);
 $grid-column-header-color: dynamic($color);
 $grid-column-header-font-weight: dynamic(400);
@@ -774,6 +775,7 @@ $form-field-height: dynamic(32px);`,
 .x-grid-header-ct { background-color: $grid-header-background-color; border-color: $grid-header-border-color; }
 .x-column-header-over-theme-test { background-color: $grid-header-over-background-color; }
 .x-menu-theme-test { background-color: $menu-background-color; border-color: $menu-border-color; padding: $menu-padding; border-width: $menu-item-border-width; }
+.x-tab-bar-default-top > .x-tab-bar-body-default { padding: $tabbar-padding; }
 .x-form-text-default { padding: $form-text-field-padding; min-height: $form-text-field-height; }
 .x-tab-bar-default { background-color: $tab-bar-background-color; }
 .x-grid-item { color: $grid-row-cell-color; background-color: $grid-row-cell-background-color; }
@@ -843,6 +845,8 @@ $form-field-height: dynamic(32px);`,
 		"border-color: #b9c3d1",
 		"padding: 0",
 		"border-width: 0",
+		".x-tab-bar-default-top > .x-tab-bar-body-default",
+		"padding: 8px 4px 0 8px",
 	} {
 		if !strings.Contains(string(data), want) {
 			t.Errorf("theme Sass output is missing %q: %s", want, data)
