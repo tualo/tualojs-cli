@@ -745,6 +745,13 @@ $menu-border-color: dynamic(#b9c3d1);
 $menu-padding: dynamic(0);
 $menu-item-border-width: dynamic(0);
 $tabbar-padding: dynamic(8px 4px 0 8px);
+$tabbar-border-width: dynamic(0);
+$tab-border-width: dynamic(0);
+$panel-border-width: dynamic(0);
+$panel-body-border-width: dynamic(0);
+$panel-frame-border-width: dynamic(0);
+$panel-frame-body-border-width: dynamic(0);
+$panel-frame-header-border-width: dynamic(0);
 $font-family: dynamic('Open Sans', 'Helvetica Neue', helvetica, arial, verdana, sans-serif);
 $grid-column-header-color: dynamic($color);
 $grid-column-header-font-weight: dynamic(400);
@@ -776,6 +783,10 @@ $form-field-height: dynamic(32px);`,
 .x-column-header-over-theme-test { background-color: $grid-header-over-background-color; }
 .x-menu-theme-test { background-color: $menu-background-color; border-color: $menu-border-color; padding: $menu-padding; border-width: $menu-item-border-width; }
 .x-tab-bar-default-top > .x-tab-bar-body-default { padding: $tabbar-padding; }
+.x-tabbar-theme-test { border-width: $tabbar-border-width; }
+.x-tab-theme-test { border-width: $tab-border-width; }
+.x-panel-default-framed-theme-test { border-width: $panel-frame-border-width; }
+.x-panel-default-framed-header-theme-test { border-width: $panel-frame-header-border-width; }
 .x-form-text-default { padding: $form-text-field-padding; min-height: $form-text-field-height; }
 .x-tab-bar-default { background-color: $tab-bar-background-color; }
 .x-grid-item { color: $grid-row-cell-color; background-color: $grid-row-cell-background-color; }
@@ -847,6 +858,11 @@ $form-field-height: dynamic(32px);`,
 		"border-width: 0",
 		".x-tab-bar-default-top > .x-tab-bar-body-default",
 		"padding: 8px 4px 0 8px",
+		".x-tabbar-theme-test",
+		".x-tab-theme-test",
+		"border-width: 0",
+		".x-panel-default-framed-theme-test",
+		".x-panel-default-framed-header-theme-test",
 	} {
 		if !strings.Contains(string(data), want) {
 			t.Errorf("theme Sass output is missing %q: %s", want, data)
